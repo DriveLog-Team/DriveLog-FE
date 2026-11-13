@@ -20,6 +20,11 @@ internal data class Preferences(
 
 internal data class Session(val id: String, val startedAt: Long, val paused: Boolean = false)
 
+internal enum class MomentSource(val label: String) {
+    VOICE("음성 요청"),
+    PASSENGER("동승자 표시"),
+}
+
 internal enum class MomentStatus(val label: String) {
     MARKED("표시됨"),
     PROCESSING("생성 중"),
@@ -37,6 +42,8 @@ internal data class Moment(
     val title: String,
     val status: MomentStatus = MomentStatus.MARKED,
     val readyAt: Long = 0,
+    val source: MomentSource = MomentSource.VOICE,
+    val author: String = "운전자",
 ) {
     val startSeconds: Long get() = (elapsedSeconds - 60).coerceAtLeast(0)
     val endSeconds: Long get() = elapsedSeconds + 10
@@ -116,7 +123,7 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
         persist()
     }
 
-    fun mark(instruction: String, requestId: String? = null) {
+    fun mark(instruction: String, requestId: String? = null, source: MomentSource = MomentSource.VOICE) {
         if (!BuildConfig.DEBUG) return
         val active = session
         if (active == null || active.paused || !preferences.consent) {
@@ -128,7 +135,10 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
         val now = System.currentTimeMillis()
         moments = listOf(
             Moment(id, active.id, now, ((now - active.startedAt) / 1000).coerceAtLeast(0),
-                instruction.take(300), "주행 중 남긴 순간")
+                instruction.take(300),
+                if (source == MomentSource.PASSENGER) "동승자가 남긴 순간" else "주행 중 남긴 순간",
+                source = source,
+                author = if (source == MomentSource.PASSENGER) "동승자" else "운전자")
         ) + moments
         feedback = "이 장면을 표시했어요."
         persist()
@@ -193,7 +203,8 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
                     put(JSONObject().put("id", it.id).put("sessionId", it.sessionId)
                         .put("requestedAt", it.requestedAt).put("elapsedSeconds", it.elapsedSeconds)
                         .put("instruction", it.instruction).put("title", it.title)
-                        .put("status", it.status.name).put("readyAt", it.readyAt))
+                        .put("status", it.status.name).put("readyAt", it.readyAt)
+                        .put("source", it.source.name).put("author", it.author))
                 }
             })
         store.edit().putString("state", data.toString()).apply()
@@ -206,7 +217,9 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
             Moment(entry.getString("id"), entry.getString("sessionId"),
                 entry.getLong("requestedAt"), entry.getLong("elapsedSeconds"),
                 entry.getString("instruction"), entry.getString("title"),
-                MomentStatus.valueOf(entry.getString("status")), entry.optLong("readyAt"))
+                MomentStatus.valueOf(entry.getString("status")), entry.optLong("readyAt"),
+                MomentSource.valueOf(entry.optString("source", MomentSource.VOICE.name)),
+                entry.optString("author", "운전자"))
         }
     }
 }

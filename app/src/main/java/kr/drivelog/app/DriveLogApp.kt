@@ -149,18 +149,22 @@ private fun TopBar(back: (() -> Unit)?, settings: (() -> Unit)?) {
 @Composable
 private fun ParkedHome(state: DriveLogState, onOpen: (String) -> Unit) {
     val now = LocalDate.now()
-    val (today, earlier) = state.moments.partition {
+    val (today, earlier) = state.moments.sortedBy { it.requestedAt }.partition {
         Instant.ofEpochMilli(it.requestedAt).atZone(ZoneId.systemDefault()).toLocalDate() == now
     }
     val active = state.session
+    val activeCount = active?.let { session -> state.moments.count { it.sessionId == session.id } }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Copy(now.format(DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)), 20, TextMuted)
         Copy("오늘 남긴 순간", 44, strong = true)
+        if (today.isNotEmpty()) {
+            Copy("오늘 ${today.size}개 · 클립 초안 ${today.count { it.status == MomentStatus.SAMPLE }}개", 24, TextMuted)
+        }
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val wide = maxWidth >= 760.dp
+        val wide = maxWidth >= 840.dp
         val sessionContent: @Composable () -> Unit = {
-            SessionPanel(state, active)
+            SessionPanel(state, active, activeCount)
         }
         val timeline: @Composable () -> Unit = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -176,7 +180,7 @@ private fun ParkedHome(state: DriveLogState, onOpen: (String) -> Unit) {
                 if (earlier.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Copy("지난 순간", 32, strong = true)
-                    earlier.forEach { item -> MomentRow(item, showDate = true) { onOpen(item.id) } }
+                    earlier.asReversed().forEach { item -> MomentRow(item, showDate = true) { onOpen(item.id) } }
                 }
             }
         }
@@ -195,7 +199,7 @@ private fun ParkedHome(state: DriveLogState, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun SessionPanel(state: DriveLogState, active: Session?) {
+private fun SessionPanel(state: DriveLogState, active: Session?, activeCount: Int?) {
     var confirmEnd by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clip(Shape).background(Panel),
@@ -211,7 +215,7 @@ private fun SessionPanel(state: DriveLogState, active: Session?) {
             Status(title, if (active != null && !active.paused) Red else TextMuted, 32)
             Copy(
                 when {
-                    active != null -> "${formatTime(active.startedAt)} 시작 · ${state.moments.count { it.sessionId == active.id }}개 표시"
+                    active != null -> "${formatTime(active.startedAt)} 시작 · ${activeCount ?: 0}개 표시"
                     BuildConfig.DEBUG -> "시연 모드 · 차량 원본에 연결되지 않았어요."
                     else -> "차량 기록 연결을 사용할 수 없어요."
                 }, 20, TextMuted,
@@ -225,7 +229,7 @@ private fun SessionPanel(state: DriveLogState, active: Session?) {
                     } else if (active.paused) {
                         Copy("설정에서 탑승자 동의를 다시 확인하세요.", 24, TextMuted)
                     } else if (!active.paused) {
-                        Action("기록 일시 중지", Modifier.fillMaxWidth(), onClick = state::pauseSession)
+                        Action("기록 사용 중지", Modifier.fillMaxWidth(), onClick = state::pauseSession)
                     }
                 }
             }
@@ -276,10 +280,13 @@ private fun SettingsScreen(state: DriveLogState, done: () -> Unit) {
 
     Copy(if (state.configured) "기록 설정" else "드라이브를 시작하기 전에", 40, strong = true)
     Copy("시연에서는 표시한 순간과 설정을 이 기기에 보관해요. 실제 음성이나 영상은 수집하지 않아요.", 24, TextMuted)
-    ToggleRow("탑승자 동의 확인", "함께 타는 사람 모두에게 기록 목적을 설명하고 동의를 확인하세요.", consent) { consent = it }
+    ToggleRow("탑승자 동의 확인", "함께 타는 사람 모두에게 기록과 분석 목적을 설명하고 동의를 확인하세요.", consent) { consent = it }
     ToggleRow("자동 기록", "시연 주행이 시작되면 세션을 열어요.", automatic) { automatic = it }
     ToggleRow("위치 연결", "위치 연결 선택을 저장해요. 이 버전에서는 위치를 받지 않아요.", location) { location = it }
     ToggleRow("AI 분석", "세션 종료 후 시연 클립 초안을 만들어요.", analysis) { analysis = it }
+    if (state.configured) {
+        Copy("보관한 순간은 세션이 끝난 뒤 이 화면에서 삭제할 수 있어요.", 20, TextMuted)
+    }
     Action(if (state.configured) "설정 저장" else "저장하고 시작", primary = true) {
         state.savePreferences(Preferences(automatic, location, analysis, consent))
         done()
@@ -339,7 +346,8 @@ private fun MomentRow(item: Moment, showDate: Boolean = false, open: () -> Unit)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Copy(item.title, 24, strong = true, maxLines = 2)
-                    Copy("${formatTime(item.requestedAt, showDate)} · 음성 요청 시연", 20, TextMuted)
+                    Copy("${formatTime(item.requestedAt, showDate)} · ${item.author}", 20, TextMuted)
+                    Copy("${item.source.label} · 시연", 20, TextMuted)
                     Copy(item.status.label, 20, if (item.status == MomentStatus.SAMPLE) Lime else TextMuted)
                 }
             }
@@ -354,8 +362,12 @@ private fun MomentDetails(item: Moment, rename: (String, String) -> Unit) {
     Copy(item.title, 40, strong = true)
     RoadPhoto(item.image, Modifier.widthIn(max = 650.dp).fillMaxWidth().height(220.dp).clip(Shape))
     Copy(item.status.label, 24, Lime, strong = true)
-    Copy("${formatTime(item.requestedAt, true)} · 음성 요청 시연", 24, TextMuted)
-    if (item.instruction.isNotBlank()) Copy("편집 요청 · ${item.instruction}", 24)
+    Copy("${formatTime(item.requestedAt, true)} · ${item.author}", 24, TextMuted)
+    Copy("${item.source.label} · 시연", 20, TextMuted)
+    if (item.instruction.isNotBlank()) {
+        val label = if (item.source == MomentSource.PASSENGER) "메모" else "편집 요청"
+        Copy("$label · ${item.instruction}", 24)
+    }
     if (item.status == MomentStatus.SAMPLE || item.status == MomentStatus.PROCESSING) {
         Copy("탐색 범위 ${formatOffset(item.startSeconds)}–${formatOffset(item.endSeconds)} · ${item.endSeconds - item.startSeconds}초", 24)
     }

@@ -48,6 +48,11 @@ class MainActivity : ComponentActivity() {
                         intent.getStringExtra("instruction") ?: "웃는 데까지",
                         intent.getStringExtra("request_id"),
                     )
+                    "passenger_mark" -> state.mark(
+                        intent.getStringExtra("instruction").orEmpty(),
+                        intent.getStringExtra("request_id"),
+                        MomentSource.PASSENGER,
+                    )
                 }
             }
         }
