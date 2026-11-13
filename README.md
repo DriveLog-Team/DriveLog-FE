@@ -1,59 +1,29 @@
-# DRIVELOG
+# DriveLog
 
-피그마 디자인을 참고해 Kotlin으로 구현한 Pleos 차량 앱 프론트엔드입니다.
+Pleos Connect에서 주행 중 표시한 순간을 주차 후 타임라인과 클립 초안으로 확인하는 Kotlin/Compose 앱입니다.
 
-## 구조
+## 빌드 및 실행
 
-- `app/src/main/java/kr/drivelog/app/MainActivity.kt`: 홈·기록·분석·쇼츠 목록·상세·지난 기록과 화면 상태.
-- `app/src/main/java/kr/drivelog/app/Design.kt`: 공통 네이티브 UI·색상·벡터 아이콘.
-- `app/src/main/java/kr/drivelog/app/DesignAssets.kt`: 폰트와 이미지 로딩·캐시.
-- `app/src/main/java/kr/drivelog/app/DemoContent.kt`: 타입으로 묶은 로컬 샘플 클립·지난 기록.
-- `app/src/main/assets`: 원본 도로 사진·폰트·폰트 라이선스.
-
-화면과 입력창은 Android 네이티브 뷰입니다. React, TypeScript, WebView, frontend 폴더, npm 빌드 단계는 제거했습니다. 피그마 원본은 Downloads에 그대로 보존돼 있으며 앱 실행에 필요하지 않습니다.
-
-## 현재 기능
-
-홈 → 기록 시연 → 분석 시연 → 추천 쇼츠 → 상세, 지난 드라이브 탐색. 제목 입력, 재생 위치 슬라이더, 재생 버튼의 시각 상태 전환. 수정한 제목은 기기에 저장하며 앱 재실행 후에도 반영됩니다.
-
-차량 연결·실제 녹음·AI 분석·영상 재생·영상 파일 생성은 미구현입니다. 타이머·분석 진행률·도로 이미지·클립 정보는 시연용 데이터입니다. 저장 버튼은 제목만 저장하며 영상은 만들지 않습니다. 정차 여부도 자동 확인하지 않습니다.
-
-Pleos 시스템이 제공하는 좌측 차량 정보·하단 공조 UI는 앱에 중복 구현하지 않습니다.
-
-## 빌드
-
-JDK 17, Android SDK Platform 35, Build Tools 34가 필요합니다. Node.js와 npm은 필요하지 않습니다.
+Gradle 데몬에는 JDK 21을 사용합니다. Android SDK Platform 35와 Build Tools 34.0.0을 설치한 뒤 Android Studio로 이 폴더를 열거나 다음 명령을 실행하세요.
 
 ```sh
 ./gradlew :app:assembleDebug :app:lintDebug
 ```
 
-현재 Mac에서:
+APK는 `app/build/outputs/apk/debug/app-debug.apk`에 생성됩니다. 테스트 기기는 [Pleos Connect v2.1.0 전용 이미지](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator) (Android 14/API 34, ARM64, 2560 × 1440)입니다. Device Manager에서 실행하고 APK를 설치한 뒤, 차량 홈이 준비되면 하단 앱 목록에서 **DRIVELOG**를 여세요.
+
+## MVP 시연
+
+초기 설정에서 **탑승자 동의 확인**, **자동 기록**, **AI 분석**을 켜고 저장하세요. 위치 연결은 꺼둔 상태에서도 순간을 표시할 수 있습니다. 아래 명령은 디버그 APK의 DriveLog 화면을 연 동안, 연결된 가상 기기 하나를 대상으로 실행합니다. 여러 기기가 연결돼 있으면 `adb -s <기기 ID>`를 사용하세요.
 
 ```sh
-cd /Users/moonsi/Desktop/moonsi/DriveLog-FE
-JAVA_HOME=/Users/moonsi/Library/Java/JavaVirtualMachines/ms-17.0.16/Contents/Home GRADLE_USER_HOME="$PWD/.local/gradle" ./gradlew :app:assembleDebug :app:lintDebug
+adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app --es event drive
+adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app --es event mark --es request_id demo-1 --es instruction '웃는 데까지'
+adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app --es event park
 ```
 
-`local.properties`에서 `.local/android-sdk`를 지정합니다. SDK·캐시·로컬 설정은 Git에서 제외합니다.
+주차 홈으로 돌아오면 세션과 타임라인을 확인하세요. `drive`를 다시 보내도 진행 중인 세션을 유지합니다. 다른 요청 ID로 잠시 뒤 `mark`를 보내면 요청 시각과 탐색 범위가 달라집니다. 같은 ID로 재전송하면 한 번만 기록합니다. `occupants_changed` 이벤트는 기록을 일시 중지하며, 주차 중 동의를 확인한 뒤 계속할 수 있습니다. **세션 종료**를 확정하면 표시한 순간에 생성 중과 시연 완료 상태가 차례로 나타납니다. AI 분석을 꺼둔 경우에는 원본 대기로 표시됩니다.
 
-APK: `app/build/outputs/apk/debug/app-debug.apk` (테스트용 서명).
+설정과 타임라인 메타데이터는 기기에 저장됩니다. 주행 제한은 AAOS `CarUxRestrictions`에서 읽고, 시연 주행은 추가로 UI를 잠급니다. 플랫폼 제한을 확인하지 못하면 설정과 편집을 잠급니다. 시연 결과는 사진과 요청 시각 기준 탐색 범위로 구성됩니다. 실제 차량 자동 세션 신호, Gleo, 차량 위치, 원본 음성·영상, AI 추출과 영상 재생은 별도 연동이 필요합니다.
 
-## 실행
-
-```sh
-cd /Users/moonsi/Desktop/moonsi/DriveLog-FE
-./scripts/run-emulator.sh
-```
-
-Pleos의 왼쪽 3D 차량 화면이 나타날 때까지 기다린 다음, 하단 격자 아이콘(앱 목록)에서 DRIVELOG를 선택합니다. Pleos 런처가 오른쪽 앱 영역을 지정합니다. 스크립트는 차량 3D 화면을 위해 host GPU 모드를 사용하고 에뮬레이터만 실행합니다.
-
-새 APK를 설치할 때는 부팅 후 다른 터미널에서:
-
-```sh
-.local/android-sdk/platform-tools/adb -s emulator-5556 install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-설치 후에도 Pleos 앱 목록에서 DRIVELOG를 엽니다. `sys.boot_completed` 직후 앱을 adb로 바로 실행하면, Pleos 창 관리 준비 전에 전체 화면으로 뜰 수 있습니다.
-
-[검증 기록](docs/implementation.md)
+[DriveLog UI 기준](skills/drivelog-ui/SKILL.md) · [이전 목업 구현 및 검증 기록](docs/implementation.md)
