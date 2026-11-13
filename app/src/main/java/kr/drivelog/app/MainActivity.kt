@@ -221,6 +221,9 @@ class MainActivity : Activity() {
             place(it, 0, 87, 1440, 913)
         }
         text("●  READY", 72, 145, 250, 36, 13, green, 800)
+        button("주행 타임라인 연결", 72, 720, 440, 70, false) {
+            startActivity(android.content.Intent(this@MainActivity, DriveMomentsActivity::class.java))
+        }
         icon("camera", 1210, 151, 22, muted)
         text("시연용 데이터", 1244, 142, 150, 40, 13, muted)
         eyebrow("AI DRIVE MEMORY", 72, 415)

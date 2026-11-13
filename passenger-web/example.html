@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DriveLog 동승자 화면 예시</title>
+<style>body{max-width:40rem;margin:2rem auto;padding:0 1rem;font-family:system-ui,sans-serif;background:#fafcfb}small{color:#48665d}</style>
+<main><small>동승자 화면 예시 · 합성 주행</small><drive-timeline></drive-timeline></main>
+<script type="module">
+  import './drive-timeline.js'
+  const start = Date.now() - 180000
+  const entries = [{mark:{id:'first',kind:'TAP',atMs:60000},title:'첫 바다',place:'속초 해변',state:'MARKED'}]
+  document.querySelector('drive-timeline').connect({
+    tripId:'sample',
+    async request(path, options) {
+      if (options?.method === 'PUT') {
+        const id = path.split('/').pop()
+        if (!entries.some(e => e.mark.id === id)) entries.push({mark:{...JSON.parse(options.body),id},state:'MARKED'})
+        return Response.json(entries.at(-1).mark)
+      }
+      return Response.json({startedAt:new Date(start).toISOString(),phase:'DRIVING',entries})
+    }
+  })
+</script></html>
