@@ -27,8 +27,7 @@ export class DriveTimeline extends HTMLElement {
   }
   #clear() {
     clearInterval(this.#timer)
-    if (this.#objectUrl) URL.revokeObjectURL(this.#objectUrl)
-    this.#objectUrl = undefined
+    if (this.#session) this.#stopVideo()
   }
   disconnectedCallback() { this.#clear(); this.#session = undefined }
   #el(selector) { return this.#root.querySelector(selector) }
@@ -88,6 +87,7 @@ export class DriveTimeline extends HTMLElement {
       if (!res.ok) {
         if ([401,403,404,410].includes(res.status)) {
           s.open = false
+          s.allowedClips = new Set()
           this.#el('ol').replaceChildren()
           this.#el('#mark').disabled = true
           this.#stopVideo()
@@ -98,6 +98,7 @@ export class DriveTimeline extends HTMLElement {
       const data = await res.json()
       if (s !== this.#session) return
       s.start = Date.parse(data.startedAt)
+      s.allowedClips = new Set(data.entries.map(entry => entry.clipUrl).filter(Boolean))
       s.open = Number.isFinite(s.start) && ['DRIVING','PENDING','UPLOAD'].includes(data.phase)
       this.#el('#mark').disabled = s.busy || !s.open
       if (s.playing && !data.entries.some(e => e.clipUrl === s.playing)) this.#stopVideo()
@@ -139,7 +140,7 @@ export class DriveTimeline extends HTMLElement {
     const res = await s.request(path)
     if (!res.ok) throw new Error('clip')
     const blob = await res.blob()
-    if (s !== this.#session || (s.vehicle && !s.parked)) return
+    if (s !== this.#session || !s.allowedClips?.has(path) || (s.vehicle && !s.parked)) return
     this.#stopVideo()
     s.playing = path
     this.#objectUrl = URL.createObjectURL(blob)
