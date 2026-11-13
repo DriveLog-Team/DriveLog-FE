@@ -50,20 +50,23 @@ private val RoadPhotos = compositionLocalOf<MutableMap<String, ImageBitmap>> {
 }
 
 @Composable
-internal fun DriveLogApp(state: DriveLogState) {
+internal fun DriveLogApp(state: DriveLogState, connected: ConnectedDriveState) {
     var settings by rememberSaveable { mutableStateOf(false) }
+    var server by rememberSaveable { mutableStateOf(false) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
     val detail = state.moments.firstOrNull { it.id == detailId }
     val parked = state.access == Access.PARKED
 
-    BackHandler(parked && (detail != null || settings) && state.configured) {
+    BackHandler(parked && (detail != null || settings || server) && state.configured) {
         detailId = null
         settings = false
+        server = false
     }
     LaunchedEffect(parked) {
         if (!parked) {
             detailId = null
             settings = false
+            server = false
         }
     }
     LaunchedEffect(state.feedback) {
@@ -103,15 +106,19 @@ internal fun DriveLogApp(state: DriveLogState) {
                                 .padding(horizontal = 28.dp, vertical = 18.dp),
                             verticalArrangement = Arrangement.spacedBy(24.dp),
                         ) {
-                            val subpage = settings || detail != null
+                            val subpage = settings || server || detail != null
                             TopBar(
-                                back = if (subpage) ({ settings = false; detailId = null }) else null,
+                                back = if (subpage) ({ settings = false; server = false; detailId = null }) else null,
                                 settings = if (!subpage && state.configured) ({ settings = true }) else null,
                             )
                             when {
                                 !state.configured || settings -> SettingsScreen(state) { settings = false }
+                                server -> ConnectedDriveScreen(connected)
                                 detail != null -> MomentDetails(detail, state::rename)
-                                else -> ParkedHome(state) { detailId = it }
+                                else -> {
+                                    ParkedHome(state) { detailId = it }
+                                    Action("연결된 드라이브") { server = true }
+                                }
                             }
                             if (!subpage && state.configured && state.feedback != null) {
                                 Copy(state.feedback.orEmpty(), 24, Lime,
@@ -413,7 +420,7 @@ private fun Confirm(title: String, message: String, action: String, dismiss: () 
 }
 
 @Composable
-private fun Action(
+internal fun Action(
     label: String,
     modifier: Modifier = Modifier,
     primary: Boolean = false,
@@ -443,7 +450,7 @@ private fun Status(text: String, color: Color, size: Int) {
 }
 
 @Composable
-private fun Copy(
+internal fun Copy(
     text: String,
     size: Int,
     color: Color = TextMain,
@@ -472,7 +479,7 @@ private fun RoadPhoto(file: String, modifier: Modifier) {
     Image(bitmap, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
 }
 
-private fun formatTime(time: Long, withDate: Boolean = false): String =
+internal fun formatTime(time: Long, withDate: Boolean = false): String =
     DateTimeFormatter.ofPattern(if (withDate) "M월 d일 HH:mm" else "HH:mm", Locale.KOREAN)
         .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(time))
 

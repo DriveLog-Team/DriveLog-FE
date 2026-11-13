@@ -15,19 +15,21 @@ import androidx.lifecycle.ViewModelProvider
 
 class MainActivity : ComponentActivity() {
     private lateinit var state: DriveLogState
+    private lateinit var connected: ConnectedDriveState
     private var restrictions: VehicleRestrictions? = null
     private var debugInput: BroadcastReceiver? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         state = ViewModelProvider(this)[DriveLogState::class.java]
+        connected = ViewModelProvider(this)[ConnectedDriveState::class.java]
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
             restrictions = VehicleRestrictions(this, state::updatePlatform)
         } else if (BuildConfig.DEBUG) {
             state.updatePlatform(Access.PARKED)
         }
         if (BuildConfig.DEBUG) registerDebugInput()
-        setContent { DriveLogApp(state) }
+        setContent { DriveLogApp(state, connected) }
     }
 
     override fun onDestroy() {
@@ -53,12 +55,21 @@ class MainActivity : ComponentActivity() {
                         intent.getStringExtra("request_id"),
                         MomentSource.PASSENGER,
                     )
+                    "server_voice_mark" -> connected.send(
+                        intent.getStringExtra("instruction") ?: "지금 순간 남겨줘",
+                        intent.getStringExtra("request_id"),
+                    )
+                    "server_passenger_mark" -> connected.send(null, intent.getStringExtra("request_id"))
                 }
             }
         }
         val filter = IntentFilter("${packageName}.DEMO")
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_EXPORTED)
-        else registerReceiver(receiver, filter)
+        val shellPermission = "android.permission.DUMP"
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(receiver, filter, shellPermission, null, RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(receiver, filter, shellPermission, null)
+        }
         debugInput = receiver
     }
 }
