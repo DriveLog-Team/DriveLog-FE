@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "DriveLog"
 
 include(":app")
+include(":phone")
