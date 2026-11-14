@@ -4,6 +4,12 @@
 
 홈의 **주행 타임라인 연결**에서 배정받은 주행 ID와 개인 토큰으로 접속합니다. 개발 연동 화면은 토큰을 메모리에만 보관합니다. 차량의 음성 인식기가 전달한 저장 명령은 등록 성공 후 TTS로 응답합니다. 정차 등록 후에는 시간순 표시와 공유가 허용된 영상을 조회합니다. 동승자 폰의 버튼과 BFF 연결 예시는 [passenger-web](passenger-web/README.md)에 있습니다.
 
+## 휴대폰에서 Instagram 스토리 공유
+
+Android 9 이상에서 `./gradlew :phone:assembleDebug`로 빌드한 `phone/build/outputs/apk/debug/phone-debug.apk`와 Instagram을 설치합니다. DriveLog 스토리 앱에서 프로젝트의 공개 Meta 앱 ID를 한 번 설정합니다. 빌드 시 `-PdriveLogMetaAppId=숫자ID`로 기본값을 지정할 수도 있습니다.
+
+차량 또는 개인 보관함의 QR을 Android Chrome으로 스캔한 뒤 **인스타 스토리에 공유**를 누릅니다. 앱이 선택한 MP4를 받아 Instagram 작성기에 읽기 권한을 넘깁니다. 최종 게시 버튼은 사용자가 누릅니다. 전송 중 네트워크가 끊겨 QR이 소진됐으면 차량이나 보관함에서 새 QR을 발급합니다.
+
 ## 구조
 
 - `app/src/main/java/kr/drivelog/app/MainActivity.kt`: 홈·기록·분석·쇼츠 목록·상세·지난 기록과 화면 상태.
