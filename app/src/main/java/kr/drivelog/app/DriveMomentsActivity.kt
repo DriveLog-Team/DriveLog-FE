@@ -3,6 +3,7 @@ package kr.drivelog.app
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -39,6 +40,7 @@ class DriveMomentsActivity : Activity() {
     private var playingPath: String? = null
     private var loading = false
     private var visible = false
+    private var restrictions: VehicleRestrictions? = null
     private val tick = object : Runnable {
         override fun run() {
             if (base.isNotEmpty()) refresh()
@@ -74,6 +76,14 @@ class DriveMomentsActivity : Activity() {
             refresh { success ->
                 connect.isEnabled=true
                 if (success) { setup.visibility=View.GONE; secret.text.clear() } else { base=""; token="" }
+            }
+        }
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            restrictions = VehicleRestrictions(this) { access ->
+                if (access != Access.PARKED) {
+                    stopVideo()
+                    finish()
+                }
             }
         }
         mark.setOnClickListener {
@@ -174,5 +184,5 @@ class DriveMomentsActivity : Activity() {
     private fun stopVideo() { playingPath=null; player.stopPlayback(); player.visibility=View.GONE }
     override fun onStart() { super.onStart(); visible=true; rows.post(tick) }
     override fun onStop() { visible=false; rows.removeCallbacks(tick); stopVideo(); super.onStop() }
-    override fun onDestroy() { tts?.shutdown(); io.shutdownNow(); super.onDestroy() }
+    override fun onDestroy() { restrictions?.close(); tts?.shutdown(); io.shutdownNow(); super.onDestroy() }
 }
