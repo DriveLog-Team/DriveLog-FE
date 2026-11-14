@@ -25,6 +25,13 @@ internal class ConnectedDriveState : ViewModel() {
     private var submission: Job? = null
     private val sent = mutableSetOf<Pair<String, String>>()
 
+    val hasActiveTrip: Boolean
+        get() = api != null && trip != null && timeline?.phase == "DRIVING"
+
+    fun requestShorts() {
+        if (hasActiveTrip) send(command = null)
+    }
+
     fun connect(api: DriveLogApi) {
         disconnect()
         client = api

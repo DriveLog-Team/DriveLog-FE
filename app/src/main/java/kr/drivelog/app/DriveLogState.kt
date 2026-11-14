@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,6 +25,7 @@ internal data class Session(val id: String, val startedAt: Long, val paused: Boo
 internal enum class MomentSource(val label: String) {
     VOICE("음성 요청"),
     PASSENGER("동승자 표시"),
+    MANUAL("수동 쇼츠 요청"),
 }
 
 internal enum class MomentStatus(val label: String) {
@@ -76,8 +79,24 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
     var feedback by mutableStateOf<String?>(null)
         private set
 
+    init {
+        if (BuildConfig.DEBUG && !saved.optBoolean("demoSeeded")) {
+            moments = moments + demoMoments()
+            persist()
+        }
+    }
+
     val access: Access
         get() = if (simulatedDriving) Access.RESTRICTED else platformAccess
+
+    val canRequestDemoShorts: Boolean
+        get() = BuildConfig.DEBUG && simulatedDriving && platformAccess == Access.PARKED &&
+            preferences.consent && session?.paused == false
+
+    fun requestDemoShorts() {
+        if (!canRequestDemoShorts) return
+        mark("방금 장면으로 쇼츠 만들어줘", source = MomentSource.MANUAL)
+    }
 
     fun updatePlatform(value: Access) {
         platformAccess = value
@@ -136,11 +155,15 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
         moments = listOf(
             Moment(id, active.id, now, ((now - active.startedAt) / 1000).coerceAtLeast(0),
                 instruction.take(300),
-                if (source == MomentSource.PASSENGER) "동승자가 남긴 순간" else "주행 중 남긴 순간",
+                when (source) {
+                    MomentSource.PASSENGER -> "동승자가 남긴 순간"
+                    MomentSource.MANUAL -> "수동으로 남긴 순간"
+                    MomentSource.VOICE -> "주행 중 남긴 순간"
+                },
                 source = source,
                 author = if (source == MomentSource.PASSENGER) "동승자" else "운전자")
         ) + moments
-        feedback = "이 장면을 표시했어요."
+        feedback = if (source == MomentSource.MANUAL) "쇼츠로 만들 장면을 남겼어요." else "이 장면을 표시했어요."
         persist()
     }
 
@@ -190,6 +213,7 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
 
     private fun persist() {
         val data = JSONObject()
+            .put("demoSeeded", BuildConfig.DEBUG || saved.optBoolean("demoSeeded"))
             .put("configured", configured)
             .put("auto", preferences.automatic)
             .put("location", preferences.location)
@@ -220,6 +244,33 @@ internal class DriveLogState(application: Application) : AndroidViewModel(applic
                 MomentStatus.valueOf(entry.getString("status")), entry.optLong("readyAt"),
                 MomentSource.valueOf(entry.optString("source", MomentSource.VOICE.name)),
                 entry.optString("author", "운전자"))
+        }
+    }
+
+    private fun demoMoments(): List<Moment> {
+        val date = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        val start = date.atStartOfDay(zone).toInstant()
+        // Keep samples under today's tab even when the demo starts just after midnight.
+        val first = maxOf(start.toEpochMilli(), System.currentTimeMillis() - 54 * 60_000L)
+        val spacing = ((System.currentTimeMillis() - first) / 4).coerceAtLeast(0)
+        val titles = listOf("터널 끝에서 처음 본 바다", "휴게소에서 고른 간식", "길을 잘못 들어 다 같이 웃은 순간", "해 질 무렵, 마지막 해안도로")
+        val notes = listOf("바다가 보이는 순간부터", "커피 사러 들른 휴게소", "길을 잘못 든 얘기부터 웃음이 끝날 때까지", "노을이 가장 잘 보이는 구간")
+        return titles.mapIndexedNotNull { index, title ->
+            val id = "built-in-demo-$index"
+            if (moments.any { it.id == id }) return@mapIndexedNotNull null
+            val passenger = index % 2 == 1
+            Moment(
+                id = id,
+                sessionId = "built-in-demo",
+                requestedAt = first + spacing * index,
+                elapsedSeconds = 60L + index * 181,
+                instruction = notes[index],
+                title = title,
+                status = MomentStatus.SAMPLE,
+                source = if (passenger) MomentSource.PASSENGER else MomentSource.VOICE,
+                author = if (passenger) "동승자" else "운전자",
+            )
         }
     }
 }

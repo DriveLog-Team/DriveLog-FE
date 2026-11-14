@@ -18,6 +18,7 @@ import kotlin.coroutines.coroutineContext
 internal const val DriveLogOrigin = "https://35.216.33.209"
 
 internal data class RemoteTrip(val id: String, val phase: String)
+internal data class DriveRoute(val departure: String? = null, val destination: String? = null)
 internal data class RemoteMoment(
     val id: String,
     val author: String,
@@ -32,8 +33,9 @@ internal data class RemoteTimeline(
     val startedAt: Instant,
     val phase: String,
     val moments: List<RemoteMoment>,
+    val route: DriveRoute,
 )
-internal data class SavedClip(val tripId: String, val title: String, val durationMs: Long)
+internal data class SavedClip(val tripId: String, val title: String, val durationMs: Long, val route: DriveRoute)
 internal data class Handoff(val png: ByteArray, val expiresAt: Instant)
 
 internal class ApiError(val code: Int) : IOException()
@@ -61,7 +63,7 @@ internal class DriveLogApi(origin: String, private val token: String) {
                 mark.getString("kind"), entry.optionalText("place"), state, entry.optionalText("title"),
                 state == "CLIP_READY" && entry.optionalText("clipUrl") != null)
         }
-        return RemoteTimeline(started, data.getString("phase"), entries.sortedBy { it.at })
+        return RemoteTimeline(started, data.getString("phase"), entries.sortedBy { it.at }, data.driveRoute())
     }
 
     suspend fun mark(tripId: String, markId: String, atMs: Long, command: String?) {
@@ -77,7 +79,7 @@ internal class DriveLogApi(origin: String, private val token: String) {
     }
 
     suspend fun library(): List<SavedClip> = arrayRequest("/api/library").map {
-        SavedClip(it.uuid("tripId"), it.getString("title"), it.getLong("durationMs"))
+        SavedClip(it.uuid("tripId"), it.getString("title"), it.getLong("durationMs"), it.driveRoute())
     }
 
     suspend fun handoff(tripId: String): Handoff {
@@ -175,6 +177,14 @@ private fun JSONArray.objects() = List(length()) { getJSONObject(it) }
 private fun JSONObject.uuid(key: String) = UUID.fromString(getString(key)).toString()
 private fun JSONObject.optionalText(key: String): String? =
     if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
+
+private fun JSONObject.driveRoute(): DriveRoute {
+    val context = optJSONObject("driveContext")
+    return DriveRoute(
+        departure = (context?.opt("departure") as? String)?.trim()?.takeIf { it.isNotEmpty() },
+        destination = (context?.opt("destination") as? String)?.trim()?.takeIf { it.isNotEmpty() },
+    )
+}
 
 internal fun Handoff.decodeQr() = BitmapFactory.decodeByteArray(png, 0, png.size)
 

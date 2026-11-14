@@ -1,20 +1,71 @@
-# DriveLog
+# DRIVELOG
 
-Pleos Connect에서 주행 중 표시한 순간을 주차 후 타임라인과 클립 초안으로 확인하는 Kotlin/Compose 앱입니다.
+<img src="app/src/main/res/drawable-nodpi/ic_drivelog_mark.png" alt="굽은 도로를 담은 DRIVELOG 북마크 로고" width="96" />
+
+**차 안에서 기억하고 싶은 순간을 남기고, 도착 후 짧은 영상으로 다시 보는 드라이브 기록 앱입니다.** 함께 웃었던 대화나 터널 끝에서 처음 본 바다를 주행 중 표시해 두고, 주차한 뒤 그날의 타임라인을 다시 열어보는 경험을 만듭니다. 이 저장소는 Pleos Connect용 차량 앱입니다.
+
+## 우리가 만들고 싶은 경험
+
+- **여행에 집중하기.** 이동 중에는 기억하고 싶은 순간만 표시하고, 상세 기록과 영상은 주차한 뒤 확인합니다.
+- **같이 탄 사람의 기억도 담기.** 음성 요청과 동승자 표시를 같은 드라이브의 타임라인에 모으는 흐름을 설계했습니다. 현재 차량 앱에서는 두 입력을 디버그 이벤트로 시연할 수 있습니다.
+- **기록의 범위를 직접 정하기.** 탑승자 동의와 자동 기록, 위치 연결, AI 분석을 설정에서 관리합니다. 연결된 운행에서 볼 수 있는 클립은 서버가 전달하는 동의 및 처리 상태에 따릅니다.
+
+## 로고와 화면 디자인
+
+**굽은 도로를 담은 북마크**는 함께 달린 길과 “방금 그거 남겨줘”라고 말해 기억하고 싶은 순간을 표시하는 기능을 뜻합니다. 런처와 앱 헤더에서 같은 심볼을 사용합니다.
+
+| 색 | HEX | 화면에서의 역할 |
+| --- | --- | --- |
+| 버터 크림 | `#FFF8E9` | 앱과 런처 아이콘의 배경 |
+| 맑은 블루 | `#2F5EA8` | 북마크, 주요 버튼, 선택 상태, 기록 시연 파형 |
+| 살구 | `#FFBC98` | 주차 홈의 기록 일시 중지 영역 |
+| 차콜 | `#202A38` | 제목과 본문 |
+
+주차 홈은 **오늘 남긴 순간**과 타임라인을 중심으로 구성합니다. 오늘 기록이 비어 있으면 최근 드라이브와 **지난 기록 보기**를 보여줍니다. 홈 제목에는 나눔명조 Bold, 로고 옆 영문과 큰 숫자에는 Manrope Bold, 본문과 버튼에는 Noto Sans KR을 사용합니다.
+
+쇼츠 목록은 카드 전체가 상세 화면으로 이어지고 오른쪽 끝의 화살표가 이동을 안내합니다. 넓은 창에서는 제목 옆에 출발지와 목적지를 표시하며, 좁은 창에서는 경로를 제목 아래에 배치합니다. 장소는 서버가 제공한 값을 사용합니다.
+
+## 구현 범위
+
+| 흐름 | 현재 차량 앱에서 할 수 있는 일 |
+| --- | --- |
+| 주차 중 준비 | 탑승자 동의, 자동 기록, 위치 연결, AI 분석 설정을 기기에 저장 |
+| 로컬 주행 시연 | **녹음 시연 중** 화면의 파형과 **방금 장면 쇼츠 요청** 버튼으로 순간 표시. 음성 요청과 동승자 표시도 디버그 이벤트로 입력 |
+| 로컬 결과 확인 | 오늘과 지난 기록 탐색, 순간 제목 수정, 세션 종료 후 시연 결과 확인. 요청 시각 기준으로 최대 60초 전부터 10초 후까지의 탐색 범위 표시 |
+| 연결된 운행 | 팀 BFF로 내 운행과 타임라인 조회, 동의가 적용된 완성 클립 미리보기, 보관한 MP4의 휴대폰 저장 QR 열기 |
+
+로컬 시연은 실제 음성을 수집하지 않습니다. 파형은 애니메이션이며, 로컬 결과는 시연용 이미지와 탐색 범위로 구성됩니다. 연결된 운행에서는 서버가 제공한 MP4를 재생합니다. 실제 Gleo 입력, 차량 위치 및 자동 세션 신호, 빌트인 캠 원본 수집, 음성 전사와 쇼츠 생성, 동승자용 휴대폰 앱은 별도 연동 범위입니다.
+
+## 기술 스택
+
+| 영역 | 사용 기술 |
+| --- | --- |
+| 차량 앱 | Kotlin 2.2.10, Jetpack Compose, Material 3 1.3.1 |
+| 차량 실행 환경 | Pleos Connect v2.1.0 에뮬레이터, Android Automotive OS의 `CarUxRestrictions` |
+| 상태와 저장 | AndroidX ViewModel, Compose 상태, SharedPreferences에 설정과 로컬 타임라인 메타데이터 저장 |
+| 서버 연결 | Kotlin Coroutines, `HttpsURLConnection`, HTTPS JSON API 및 Bearer 세션 토큰 |
+| 영상과 QR | Android `VideoView`로 서버 MP4 미리보기, 서버가 발급한 QR 이미지 표시 |
+| 빌드 | Gradle Wrapper 9.3.1, Android Gradle Plugin 9.1.1, JDK 21, Java/Kotlin JVM 대상 17, `compileSdk`·`targetSdk` 35, `minSdk` 28 |
 
 ## 빌드 및 실행
 
-Gradle 데몬에는 JDK 21을 사용합니다. Android SDK Platform 35와 Build Tools 34.0.0을 설치한 뒤 Android Studio로 이 폴더를 열거나 다음 명령을 실행하세요.
+JDK 21, Android SDK Platform 35, SDK Build Tools와 Platform Tools를 준비합니다. 차량 실행에는 Device Manager에 등록된 [Pleos Connect v2.1.0 전용 API 34 에뮬레이터](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)가 필요합니다.
 
 ```sh
 ./gradlew :app:assembleDebug :app:lintDebug
 ```
 
-APK는 `app/build/outputs/apk/debug/app-debug.apk`에 생성됩니다. 테스트 기기는 [Pleos Connect v2.1.0 전용 이미지](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator) (Android 14/API 34, ARM64, 2560 × 1440)입니다. Device Manager에서 실행하고 APK를 설치한 뒤, 차량 홈이 준비되면 하단 앱 목록에서 **DRIVELOG**를 여세요.
+APK는 `app/build/outputs/apk/debug/app-debug.apk`에 생성됩니다. macOS에서는 다음 명령으로 현재 소스를 빌드하고 Pleos에 설치한 뒤 앱을 실행할 수 있습니다. AVD 이름이 다르면 첫 번째 인자로 전달합니다.
+
+```sh
+./scripts/run-emulator.sh
+```
 
 ## MVP 시연
 
-초기 설정에서 **탑승자 동의 확인**, **자동 기록**, **AI 분석**을 켜고 저장하세요. 위치 연결은 꺼둔 상태에서도 순간을 표시할 수 있습니다. 아래 명령은 디버그 APK의 DriveLog 화면을 연 동안, 연결된 가상 기기 하나를 대상으로 실행합니다. 여러 기기가 연결돼 있으면 `adb -s <기기 ID>`를 사용하세요.
+1. Pleos에서 **DRIVELOG**를 열고 **탑승자 동의 확인**, **자동 기록**, **AI 분석**을 켠 뒤 저장합니다. 위치 연결을 끈 상태에서도 순간을 표시할 수 있습니다.
+2. 차량이 주차된 상태에서 아래 `drive` 이벤트를 보내고 **방금 장면 쇼츠 요청**을 누릅니다. `mark` 이벤트로 음성 요청도 시연할 수 있습니다.
+3. `park` 이벤트를 보내 주차 홈으로 돌아온 다음 타임라인을 확인합니다. **세션 종료**를 확정하면 시연 항목이 **생성 중 → 완성 · 시연** 순으로 바뀝니다. AI 분석을 끈 경우에는 **원본 대기**로 표시됩니다.
 
 ```sh
 adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app --es event drive
@@ -22,26 +73,24 @@ adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app
 adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app --es event park
 ```
 
-주차 홈으로 돌아오면 세션과 타임라인을 확인하세요. `drive`를 다시 보내도 진행 중인 세션을 유지합니다. 다른 요청 ID로 잠시 뒤 `mark`를 보내면 요청 시각과 탐색 범위가 달라집니다. 같은 ID로 재전송하면 한 번만 기록합니다. `occupants_changed` 이벤트는 기록을 일시 중지하며, 주차 중 동의를 확인한 뒤 계속할 수 있습니다. **세션 종료**를 확정하면 표시한 순간에 생성 중과 시연 완료 상태가 차례로 나타납니다. AI 분석을 꺼둔 경우에는 원본 대기로 표시됩니다.
+위 명령은 디버그 APK의 화면을 연 상태에서 실행합니다. 여러 기기가 연결돼 있으면 `adb -s <기기 ID>`를 사용합니다. 같은 `request_id`의 표시 이벤트는 한 번만 기록됩니다. `occupants_changed` 이벤트를 보내면 기록이 일시 중지되고, 주차 중 탑승자 동의를 다시 확인한 뒤 계속할 수 있습니다.
 
-설정과 타임라인 메타데이터는 기기에 저장됩니다. 주행 제한은 AAOS `CarUxRestrictions`에서 읽고, 시연 주행은 추가로 UI를 잠급니다. 플랫폼 제한을 확인하지 못하면 설정과 편집을 잠급니다. 시연 결과는 사진과 요청 시각 기준 탐색 범위로 구성됩니다. 실제 차량 자동 세션 신호, Gleo, 차량 위치, 원본 음성·영상, AI 추출과 영상 재생은 별도 연동이 필요합니다.
-
-[DriveLog UI 기준](skills/drivelog-ui/SKILL.md) · [이전 목업 구현 및 검증 기록](docs/implementation.md)
+실제 차량에서 주행 제한이 활성화되거나 차량 상태를 확인할 수 없으면 시연 파형, 수동 요청 버튼, 설정과 편집에 대한 접근을 제한합니다.
 
 ## 연결된 드라이브
 
-주차 홈의 **연결된 드라이브**에서 팀 BFF의 HTTPS 주소와 로그인 세션 토큰을 입력하세요. BFF는 로그인한 사용자를 확인하고 해당 사용자의 개인 토큰을 서버에서 선택해 아래 경로를 전달해야 합니다. 운영자·팀 토큰은 앱에 입력하거나 빌드에 포함하지 않습니다. 디버그 APK에서는 운영 주소에 발급받은 테스트 계정의 **개인 토큰**으로도 확인할 수 있습니다. 앱은 세션 토큰을 메모리에만 유지합니다.
+주차 홈의 **운행 연결**에서 팀 BFF의 HTTPS 주소와 로그인 세션 토큰을 입력합니다. 연결 후 **내 운행**에서 서버에 등록된 운행과 보관함을 열 수 있습니다. BFF는 로그인한 사용자에게 해당하는 개인 토큰으로 요청을 전달하며, 앱은 세션 토큰을 메모리에만 유지합니다. 디버그 APK에서는 운영 주소에 테스트 계정의 개인 토큰을 사용해 연결을 확인할 수 있습니다.
 
-| 기능 | 경로 |
+| 기능 | API |
 | --- | --- |
 | 연결 확인 | `GET /api/status` |
 | 내 운행과 타임라인 | `GET /api/private-trips`, `GET /api/private-trips/{id}/timeline` |
-| 음성·동승자 표시 시연 | `PUT /api/private-trips/{id}/voice-marks/{markId}`, `PUT /api/private-trips/{id}/marks/{markId}` |
-| 완성된 순간 미리보기 | `GET /api/private-trips/{id}/marks/{markId}/clip` |
-| 보관 목록·영상·휴대폰 QR | `GET /api/library`, `GET /api/library/{id}/clip`, `POST /api/library/{id}/handoffs` |
+| 음성·탭 표시 | `PUT /api/private-trips/{id}/voice-marks/{markId}`, `PUT /api/private-trips/{id}/marks/{markId}` |
+| 완성 클립 미리보기 | `GET /api/private-trips/{id}/marks/{markId}/clip` |
+| 보관 목록·영상·휴대폰 저장 QR | `GET /api/library`, `GET /api/library/{id}/clip`, `POST /api/library/{id}/handoffs` |
 
-서버에 등록된 운행을 선택하면 운행 시작 시각과 서버의 시간순 타임라인을 표시합니다. 동의가 적용된 완성 클립만 미리볼 수 있으며, 보관함의 저장본에서 휴대폰 저장 QR을 열 수 있습니다. 주행 제한 또는 상태 불명 시에는 서버 화면을 닫습니다.
+시연 중 **방금 장면 쇼츠 요청**은 선택한 서버 운행이 주행 중이면 탭 표시를 전송하고, 그 외에는 로컬 시연 타임라인에 수동 요청을 남깁니다. 디버그 이벤트 `server_voice_mark`와 `server_passenger_mark`도 선택한 서버 운행에 표시를 전송합니다. `request_id`를 지정하려면 UUID를 사용합니다. 전송 대기 상태에서는 **표시 다시 보내기**가 같은 ID와 본문을 사용합니다.
 
-디버그 입력의 `server_voice_mark`와 `server_passenger_mark`는 현재 선택한 **서버 운행**에 표시를 보냅니다. 선택적으로 새 UUID를 `request_id`로 넘기고, 음성 시연에서는 `instruction`으로 명령을 지정할 수 있습니다. 응답을 받지 못하면 **표시 다시 보내기**가 같은 ID와 본문을 사용합니다. 전송 대기는 앱 실행 중 유지됩니다. 로컬 `mark`, `passenger_mark` 이벤트는 시연 타임라인에만 기록됩니다.
+출발지와 목적지를 표시하려면 BFF가 타임라인 응답과 보관함 항목에 `driveContext: { departure, destination }`를 제공해야 합니다. 두 값은 위치 맥락 제공이 허용된 운행의 지명이며, 경로가 없는 기록에는 **경로 정보 없음**이 표시됩니다. 계정 발급, 운영자 출발·도착 등록, 탑승자·보호자 동의, 원본 업로드, 편집 작업과 확정은 팀 서버 흐름에서 처리합니다.
 
-차량 앱의 연결 범위는 이미 등록된 개인 운행과 보관함입니다. 계정 발급, 운영자 출발·도착 등록, 탑승자·보호자 동의, 원본 업로드, 편집 작업과 확정은 팀 서버 흐름에서 처리해야 합니다. 휴대폰 전용 앱과 실제 Gleo 입력은 별도 연동입니다.
+[이전 목업 구현 및 검증 기록](docs/implementation.md)

@@ -2,10 +2,12 @@ package kr.drivelog.app
 
 import android.net.Uri
 import android.widget.VideoView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.*
@@ -42,6 +44,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
     var selectedMark by remember(api) { mutableStateOf<RemoteMoment?>(null) }
     var selectedSaved by remember(api) { mutableStateOf<SavedClip?>(null) }
     var preview by remember(api) { mutableStateOf<File?>(null) }
+    var disconnect by remember(api) { mutableStateOf(false) }
     var qr by remember(api) { mutableStateOf<Handoff?>(null) }
     val trip = state.trip
     val timeline = state.timeline
@@ -89,31 +92,33 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
     }
 
     Copy("연결된 드라이브", 40, strong = true)
-    if (error != null) Copy(error.orEmpty(), 24)
-    if (busy) Copy("서버에서 불러오는 중이에요.", 24)
-    state.markMessage?.let { Copy(it, 24) }
+    AnimatedVisibility(busy) {
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    error?.let { ServerNotice(it) }
+    state.markMessage?.let { ServerNotice(it) }
     if (state.pending != null) Action("표시 다시 보내기", onClick = state::retry)
 
-    if (preview != null) {
-        val file = checkNotNull(preview)
-        key(file) {
-            AndroidView(
-                factory = { VideoView(it).apply {
-                    setVideoURI(Uri.fromFile(file))
-                    setOnErrorListener { _, _, _ ->
-                        error = "이 기기에서 영상 미리보기를 열 수 없어요."
-                        preview = null
-                        true
-                    }
-                    start()
-                } },
-                modifier = Modifier.widthIn(max = 540.dp).fillMaxWidth().height(440.dp)
-                    .background(Color.Black),
-                onRelease = { it.stopPlayback() },
-            )
+    if (previewFile != null) {
+        DriveDialog(dismiss = { preview = null }, wide = true) {
+            Copy("클립 미리보기", 32, strong = true)
+            key(previewFile) {
+                AndroidView(
+                    factory = { VideoView(it).apply {
+                        setVideoURI(Uri.fromFile(previewFile))
+                        setOnErrorListener { _, _, _ ->
+                            error = "이 기기에서 영상 미리보기를 열 수 없어요."
+                            preview = null
+                            true
+                        }
+                        start()
+                    } },
+                    modifier = Modifier.fillMaxWidth().height(350.dp).background(Color.Black),
+                    onRelease = { it.stopPlayback() },
+                )
+            }
+            Action("재생 닫기") { preview = null }
         }
-        Action("재생 닫기") { preview = null }
-        return
     }
 
     val saved = selectedSaved
@@ -129,10 +134,16 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
                 launchRequest { qr = api.handoff(saved.tripId) }
             }
             qr?.let { ticket ->
-                val bitmap = remember(ticket) { ticket.decodeQr()?.asImageBitmap() }
-                if (bitmap != null) {
-                    Image(bitmap, "휴대폰 저장 QR", Modifier.size(240.dp))
-                    Copy("휴대폰으로 스캔해 MP4를 저장하세요. 한 번만 사용할 수 있어요.", 24)
+                DriveDialog(dismiss = { qr = null }) {
+                    Copy("휴대폰에서 클립 저장", 32, strong = true)
+                    val bitmap = remember(ticket) { ticket.decodeQr()?.asImageBitmap() }
+                    if (bitmap != null) {
+                        Image(bitmap, "휴대폰 저장 QR", Modifier.size(240.dp))
+                        Copy("스캔해 MP4를 저장하세요. 한 번만 사용할 수 있어요.", 24, TextMuted)
+                    } else {
+                        Copy("QR을 표시할 수 없어요.", 24)
+                    }
+                    Action("닫기") { qr = null }
                 }
             }
             Action("보관함 목록", enabled = !busy) { selectedSaved = null; qr = null }
@@ -154,10 +165,16 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
                 launchRequest { state.select(trip, api.timeline(trip.id)) }
             }
             if (timeline.moments.isEmpty()) Copy("아직 남긴 순간이 없어요.", 24)
+            val route = timeline.route
             timeline.moments.forEach { item ->
-                HorizontalDivider()
-                MomentMetadata(item)
-                Action(item.title ?: "순간 상세", enabled = !busy) { selectedMark = item }
+                LogRow(
+                    item.title ?: "남긴 순간",
+                    "${formatTime(item.at.toEpochMilli(), true)} · ${markSource(item)}",
+                    momentLabel(item.state),
+                    highlighted = item.canPlay,
+                    enabled = !busy,
+                    route = if (item.canPlay) route else null,
+                ) { selectedMark = item }
             }
         }
     }
@@ -166,22 +183,38 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
             Copy("보관함", 32, strong = true)
             if (library.orEmpty().isEmpty()) Copy("저장한 클립이 없어요.", 24)
             library.orEmpty().forEach { item ->
-                Action(item.title, Modifier.fillMaxWidth(), enabled = !busy) { selectedSaved = item }
+                LogRow(
+                    title = item.title,
+                    meta = "${item.durationMs / 1000}초",
+                    status = "보관 완료",
+                    enabled = !busy,
+                    route = item.route,
+                ) {
+                    selectedSaved = item
+                }
             }
             Action("운행 목록") { library = null }
         } else {
             Copy("내 운행", 32, strong = true)
             if (trips?.isEmpty() == true) Copy("이 계정에 연결된 운행이 없어요.", 24)
             trips.orEmpty().forEachIndexed { index, item ->
-                val label = if (item.id == trip?.id) "선택됨" else "운행 ${index + 1}"
-                Action("$label · ${tripLabel(item.phase)}", Modifier.fillMaxWidth(), enabled = !busy) {
+                val selected = item.id == trip?.id
+                LogRow("운행 ${index + 1}", tripLabel(item.phase),
+                    if (selected) "선택됨" else "타임라인 열기", highlighted = selected, enabled = !busy) {
                     launchRequest { state.select(item, api.timeline(item.id)) }
                 }
             }
             Action("운행 목록 새로고침", enabled = !busy) { launchRequest { trips = api.trips() } }
             Action("보관함 열기", enabled = !busy) { launchRequest { library = api.library() } }
         }
-        Action("연결 해제", enabled = !busy, onClick = state::disconnect)
+        Action("연결 해제", enabled = !busy) { disconnect = true }
+    }
+    if (disconnect) {
+        Confirm("서버 연결을 해제할까요?", "다시 연결하려면 세션 토큰을 입력해야 해요.", "연결 해제",
+            dismiss = { disconnect = false }) {
+            disconnect = false
+            state.disconnect()
+        }
     }
 }
 
@@ -203,7 +236,8 @@ private fun ConnectionForm(state: ConnectedDriveState) {
         visualTransformation = PasswordVisualTransformation(), singleLine = true,
         modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
         textStyle = LocalTextStyle.current.copy(fontSize = 24.sp))
-    if (status != null) Copy(status.orEmpty(), 24)
+    AnimatedVisibility(busy) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+    status?.let { ServerNotice(it) }
     Action("서버 상태 확인", enabled = origin.isNotBlank() && !busy) {
         busy = true
         scope.launch {
@@ -243,10 +277,22 @@ private fun ConnectionForm(state: ConnectedDriveState) {
 
 @Composable
 private fun MomentMetadata(item: RemoteMoment) {
-    Copy("${formatTime(item.at.toEpochMilli(), true)} · ${if (item.kind == "TAP") "동승자 표시" else "음성 요청"}", 24)
+    Copy("${formatTime(item.at.toEpochMilli(), true)} · ${markSource(item)}", 24)
     Copy("작성자 ${item.author.takeLast(8)}", 20)
     item.place?.let { Copy(it, 20) }
-    Copy(when (item.state) {
+    Copy(momentLabel(item.state), 20)
+}
+
+@Composable
+private fun ServerNotice(message: String) {
+    Surface(color = Panel, shape = Shape) {
+        Copy(message, 24, TextMain, Modifier.fillMaxWidth().padding(18.dp))
+    }
+}
+
+private fun markSource(item: RemoteMoment) = if (item.kind == "TAP") "동승자 표시" else "음성 요청"
+
+private fun momentLabel(state: String) = when (state) {
         "MARKED" -> "표시됨 · 초안 대기"
         "CLIP_READY" -> "완성"
         "SHARING_DISABLED" -> "공유 동의 대기"
@@ -254,7 +300,6 @@ private fun MomentMetadata(item: RemoteMoment) {
         "PROCESSING", "RUNNING" -> "생성 중"
         "FAILED" -> "실패"
         else -> "처리 상태 확인 중"
-    }, 20)
 }
 
 private fun tripLabel(phase: String) = when (phase) {
