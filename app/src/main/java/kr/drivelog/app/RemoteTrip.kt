@@ -10,6 +10,7 @@ internal data class ConsentReceipt(
     val transcript: Boolean,
     val context: Boolean,
     val sharing: Boolean,
+    val at: String? = null,
 )
 internal data class RemoteTrip(
     val id: String,
@@ -43,6 +44,6 @@ internal fun JSONObject.remoteTrip(): RemoteTrip {
             val receipt = decisions.getJSONObject(index)
             ConsentReceipt(ConsentTarget(receipt.getString("occupant"), receipt.getString("role"), receipt.getString("actor")),
                 receipt.getBoolean("extraction"), receipt.getBoolean("geminiTranscript"),
-                receipt.optBoolean("useTripContext"), receipt.optBoolean("shareMarkedClips"))
+                receipt.optBoolean("useTripContext"), receipt.optBoolean("shareMarkedClips"), receipt.optString("at").takeIf { it.isNotBlank() })
         })
 }

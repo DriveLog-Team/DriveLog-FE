@@ -99,8 +99,13 @@ private fun ConsentPanel(
             "제출", dismiss = { confirm = false }) {
             confirm = false
             request {
+                val fresh = api.trip(trip.id).remoteTrip()
+                if (fresh.receipts.find { it.target == target } != receipt) {
+                    updated(fresh)
+                    throw ApiError(409)
+                }
                 updated(api.consent(trip.id, target.occupant, target.role,
-                    extraction, transcript, context, sharing).remoteTrip())
+                    extraction, transcript, context, sharing, receipt?.at ?: "none").remoteTrip())
             }
         }
     }

@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
@@ -62,6 +63,6 @@ test('invite screen retries identical claim, connects passenger and strips fragm
   submit();await ui.idle();submit();await ui.idle()
   const joins=ui.state.requests.filter(r=>r.path.endsWith('/join'));assert.equal(joins.length,2);assert.equal(joins[0].body.claimKey,joins[1].body.claimKey);assert.equal(joins[0].body.displayName,joins[1].body.displayName)
   assert.equal(ui.window.location.hash,'');assert.ok(ui.window.document.querySelector('h1').textContent.includes('이번 드라이브'))
-  assert.equal(ui.window.sessionStorage.length,0);assert.ok(!ui.window.document.body.innerHTML.includes('test-passenger'))
+  assert.equal(ui.window.sessionStorage.length,1);assert.ok(!JSON.stringify(Object.values(ui.window.sessionStorage)).includes('test-passenger'));assert.ok(!ui.window.document.body.innerHTML.includes('test-passenger'))
   ui.window.happyDOM.abort()
 })

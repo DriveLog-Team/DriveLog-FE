@@ -1,5 +1,6 @@
 import {DriveApi, DEFAULT_ORIGIN, parseInvite, claimKey, displayName, consentTargets, receiptFor, validateEdit, ApiError} from './api.js'
 import {sealSession,openSession} from './vault.js'
+import {guestKey,saveGuest,loadGuest,forgetGuest} from './guest-session.js'
 const VAULT_KEY='drivelog:encrypted-session'
 const $ = selector => document.querySelector(selector)
 const root = $('#content'), notice = $('#notice')
@@ -27,11 +28,29 @@ async function run(action,{render=true}={}){
   catch(error){if(epoch===state.epoch)say(error.name==='AbortError'?'전송을 취소했어요.':error instanceof TypeError?'서버 주소와 네트워크 연결을 확인하세요.':error instanceof ApiError?error.message:error.message || '연결을 확인하세요.')}
   finally{if(epoch===state.epoch){busy(false);$('#cancel').hidden=true;state.controller=null;if(render&&(completed||beforeApi!==state.api))paint()}}
 }
-function closePlayer(){const video=$('#player video');video.pause();video.removeAttribute('src');video.load();if(state.playing)URL.revokeObjectURL(state.playing.url);state.playing=null;$('#player').close()}
+let playerGeneration=0
+function closePlayer(){playerGeneration++;const video=$('#player video');video.pause();video.removeAttribute('src');video.load();if(state.playing)URL.revokeObjectURL(state.playing.url);state.playing=null;$('#player').close()}
 async function play(path,identity){
-  const api=state.api,epoch=state.epoch,blob=await api.clip(path)
-  if(api!==state.api || epoch!==state.epoch)return
-  closePlayer();const url=URL.createObjectURL(blob);state.playing={...identity,url};$('#player video').src=url;$('#player').showModal();await $('#player video').play()
+  closePlayer()
+  const api=state.api, generation=playerGeneration
+  const blob=await api.clip(path)
+  if(!await mayPlay(api,identity))throw new Error('공유 또는 보관 상태가 바뀌었어요.')
+  if(api!==state.api || generation!==playerGeneration || document.hidden)return
+  const url=URL.createObjectURL(blob)
+  state.playing={...identity,url}
+  $('#player video').src=url
+  $('#player').showModal()
+  await $('#player video').play()
+}
+async function mayPlay(api, item){
+  if(item.kind==='mark'){
+    const timeline=await api.timeline(item.tripId)
+    return timeline.entries.some(e=>e.mark.id===item.markId&&e.state==='CLIP_READY'&&e.clipUrl===item.clipUrl)
+  }
+  if(item.kind==='library'){
+    return (await api.library()).some(i=>i.tripId===item.tripId&&i.markId===item.markId&&i.clipUrl===item.clipUrl)
+  }
+  return !['DISCARDING','DISCARDED'].includes((await api.trip(item.tripId)).phase)
 }
 function closeTicket(){state.ticket=null;$('#handoff img').removeAttribute('src');$('#handoff').close()}
 function showTicket(ticket){
@@ -42,7 +61,7 @@ $('#close-player').onclick=closePlayer;$('#player').addEventListener('cancel',ev
 $('#close-handoff').onclick=closeTicket;$('#handoff').addEventListener('cancel',event=>{event.preventDefault();closeTicket()})
 $('#revoke').onclick=()=>run(async()=>{await state.api.revoke(state.ticket.id);closeTicket()},{render:false})
 $('#cancel').onclick=()=>state.controller?.abort()
-$('#logout').onclick=()=>{if(!confirm('연결을 해제할까요? 다시 연결하려면 개인 토큰이 필요해요.'))return;closePlayer();closeTicket();state.api?.disconnect();state.api=null;state.trip=null;state.pendingMark=null;state.files.clear();state.jobs.clear();state.invitation=null;state.epoch++;say('연결을 해제했어요. 저장한 계정을 삭제하려면 기기 계정 삭제를 선택하세요.');paint()}
+$('#logout').onclick=()=>{if(!confirm('연결을 해제할까요? 다시 연결하려면 개인 토큰이 필요해요.'))return;closePlayer();closeTicket();state.api?.disconnect();forgetGuest();state.api=null;state.page='trips';state.trips=[];state.library=[];state.profiles=[];state.trip=null;state.timeline=null;state.pendingMark=null;state.files.clear();state.jobs.clear();state.invitation=null;state.epoch++;say('연결을 해제했어요. 저장한 계정을 삭제하려면 기기 계정 삭제를 선택하세요.');paint()}
 $('#navigation').onclick=event=>{const page=event.target.dataset.page;if(!page||state.busy)return;run(async()=>{state.page=page;state.trip=null;if(page==='library')state.library=await state.api.library();else state.trips=await state.api.trips()})}
 document.addEventListener('visibilitychange',()=>{if(document.hidden){closePlayer();closeTicket();state.invitation=null;root.querySelectorAll('.invite-link').forEach(n=>n.remove())}})
 async function selectTrip(id){const trip=await state.api.trip(id);state.trip=trip;state.page='trip';state.pendingMark=stored(pendingKey('mark',id));state.timeline=trip.occupants.some(s=>s.occupant===state.api.accountId)&&!['DISCARDING','DISCARDED'].includes(trip.phase)?await state.api.timeline(id):null}
@@ -59,7 +78,7 @@ function paint(){
 }
 function connectForm(){
   add(root,el('p','DRIVELOG COMPANION','eyebrow'),el('h1','함께 남기는 순간'),el('p','초대받은 드라이브에 참여하거나, 발급받은 개인 계정으로 내 기록을 열어보세요.','muted'))
-  const panel=section('내 계정 연결'),form=el('form'),origin=field(form,'HTTPS 서버 주소',['localhost','127.0.0.1'].includes(location.hostname)?location.origin:DEFAULT_ORIGIN,'url'),account=field(form,'개인 accountId'),token=field(form,'개인 accessToken','','password')
+  const panel=section('내 계정 연결'),form=el('form'),origin=field(form,'HTTPS 서버 주소',(location.pathname.startsWith('/companion/') || ['localhost','127.0.0.1'].includes(location.hostname))?location.origin:DEFAULT_ORIGIN,'url'),account=field(form,'개인 accountId'),token=field(form,'개인 accessToken','','password')
   account.autocomplete='off';add(form,el('small','팀 서버 토큰은 입력하지 마세요. 개인 토큰은 이 화면의 메모리에만 유지돼요.'))
   const remember=check(form,'이 기기에 암호화해 계정 보관 (선택)'),password=field(form,'기기 계정 잠금 암호 (8자 이상)','','password')
   password.autocomplete='new-password';password.hidden=true;form.querySelector(`label[for="${password.id}"]`).hidden=true
@@ -78,13 +97,17 @@ function connectForm(){
     try{invitation=parseInvite(location.hash)}catch(error){root.append(el('p',error.message));return}
     const panel=section('초대받은 드라이브 참여'),join=el('form'),name=field(join,'함께 탈 때 사용할 이름')
     const rememberJoin=check(join,'참여한 계정을 이 기기에 암호화해 보관'),joinPassword=field(join,'참여 계정 잠금 암호 (보관할 때 8자 이상)','','password')
-    add(join,el('p','참여 후 주행 중 순간을 표시하고, 주차 후 본인의 분석·공유 동의를 선택할 수 있어요.'))
+    add(join,el('p','새로고침해도 이 탭에서 참여를 이어갑니다. 탭을 닫은 뒤에도 보관함을 열려면 암호화 계정 보관을 선택하세요.'))
     const submit=button('초대 수락하고 참여',()=>{},true);submit.type='submit';join.append(submit);panel.append(join)
     join.onsubmit=event=>{event.preventDefault();run(async()=>{
       const api=new DriveApi(origin.value.trim()),fingerprint=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(invitation.code)),key=`drivelog:claim:${api.origin}:${invitation.tripId}:${[...new Uint8Array(fingerprint)].map(n=>n.toString(16).padStart(2,'0')).join('')}`
       let attempt=stored(key)
       if(!attempt){attempt={claimKey:claimKey(),displayName:displayName(name.value)};persist(key,attempt)}
-      if(rememberJoin.checked&&joinPassword.value.length<8)throw new Error('계정 잠금 암호는 8자 이상으로 입력하세요.');const result=await api.join(invitation,attempt);api.authorize(result.accountId,result.accessToken);state.api=api;if(rememberJoin.checked)localStorage.setItem(VAULT_KEY,JSON.stringify(await sealSession({origin:api.origin,accountId:result.accountId,accessToken:result.accessToken},joinPassword.value)));joinPassword.value='';sessionStorage.removeItem(key);history.replaceState(null,'',location.pathname+location.search);await selectTrip(result.tripId);say('드라이브에 참여했어요.')
+      if(rememberJoin.checked&&joinPassword.value.length<8)throw new Error('계정 잠금 암호는 8자 이상으로 입력하세요.');const keyForTab=await guestKey()
+      const result=await api.join(invitation,attempt)
+      const session={origin:api.origin,accountId:result.accountId,accessToken:result.accessToken,tripId:result.tripId}
+      await saveGuest(session,keyForTab)
+      api.authorize(result.accountId,result.accessToken);if(rememberJoin.checked)localStorage.setItem(VAULT_KEY,JSON.stringify(await sealSession({origin:api.origin,accountId:result.accountId,accessToken:result.accessToken},joinPassword.value)));state.api=api;joinPassword.value='';sessionStorage.removeItem(key);history.replaceState(null,'',location.pathname+location.search);await selectTrip(result.tripId);say('드라이브에 참여했어요.')
     })}
   }
 }
@@ -126,7 +149,11 @@ function consentPanel(trip){
       const decision={extraction:extraction.checked,geminiTranscript:transcript.checked,useTripContext:context.checked,shareMarkedClips:sharing.checked}
       const message=JSON.stringify({영상추출:decision.extraction,음성전사:decision.geminiTranscript,위치활용:decision.useTripContext,동승자재생:decision.shareMarkedClips})
       if(!confirm(`${label}\n${message}\n분석 거절·철회나 이미 사용한 위치 동의 철회 시 영상 폐기가 시작될 수 있어요. 공유만 철회하면 동승자 재생이 중단돼요. 제출할까요?`))return
-      run(async()=>{await state.api.consent(trip.tripId,target,decision);closePlayer();await selectTrip(trip.tripId)})
+      run(async()=>{const latest=await state.api.trip(trip.tripId)
+        if(JSON.stringify(receiptFor(latest,target))!==JSON.stringify(receipt)){
+          await selectTrip(trip.tripId);say('동의가 변경됐어요. 최신 내용을 확인하고 다시 선택하세요.');return
+        }
+        await state.api.consent(trip.tripId,target,decision,receipt?.at||'none');closePlayer();await selectTrip(trip.tripId)})
     }));panel.append(form)
   }
 }
@@ -136,7 +163,7 @@ function timelinePanel(trip){
   for(const entry of state.timeline.entries){const row=el('li'),at=new Date(Date.parse(state.timeline.startedAt)+entry.mark.atMs).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});add(row,el('time',at+' · '+(entry.authorName||entry.mark.author?.slice(-8)||'동승자')),el('p',entry.title||'기억하고 싶은 순간','clip-title'))
     if(entry.place)row.append(el('p',entry.place,'muted'))
     row.append(el('small',({MARKED:'클립 생성 대기',NO_CLIP:'이 시점에 재생할 클립이 없어요.',SHARING_DISABLED:'공유 동의가 필요해요.',CLIP_READY:'재생 가능'})[entry.state]||'처리 중'))
-    if(entry.state==='CLIP_READY'&&entry.clipUrl){row.append(button('재생',()=>run(()=>play(entry.clipUrl,{kind:'mark',tripId:trip.tripId,markId:entry.mark.id}),{render:false})));if(!['SAVED','DISCARDED','DISCARDING'].includes(trip.phase))row.append(button('내 앨범에 선택',()=>run(async()=>{await state.api.pick(trip.tripId,entry.mark.id);say('내 앨범에 보관할 표시로 선택했어요.')}),false))}
+    if(entry.state==='CLIP_READY'&&entry.clipUrl){row.append(button('재생',()=>run(()=>play(entry.clipUrl,{kind:'mark',tripId:trip.tripId,markId:entry.mark.id,clipUrl:entry.clipUrl}),{render:false})));if(!['SAVED','DISCARDED','DISCARDING'].includes(trip.phase))row.append(button('내 앨범에 선택',()=>run(async()=>{await state.api.pick(trip.tripId,entry.mark.id);say('내 앨범에 보관할 표시로 선택했어요.')}),false))}
     list.append(row)
   }
   return panel
@@ -193,9 +220,7 @@ setInterval(async()=>{
     if(state.invitation&&Date.parse(state.invitation.expiresAt)<=Date.now()){state.invitation=null;root.querySelectorAll('.invite-link').forEach(n=>n.remove())}
     if(state.ticket&&Date.parse(state.ticket.expiresAt)<=Date.now())closeTicket()
     if(state.playing){const playing=state.playing
-      if(playing.kind==='mark'){const timeline=await api.timeline(playing.tripId);if(!timeline.entries.some(e=>e.mark.id===playing.markId&&e.state==='CLIP_READY'&&e.clipUrl))closePlayer()}
-      else if(playing.kind==='library'){const library=await api.library();if(!library.some(i=>i.tripId===playing.tripId&&i.markId===playing.markId&&i.clipUrl===playing.clipUrl))closePlayer()}
-      else if(['DISCARDING','DISCARDED'].includes((await api.trip(playing.tripId)).phase))closePlayer()
+      if(!await mayPlay(api,playing)&&state.playing===playing)closePlayer()
     }
     if(state.page==='trip'&&state.trip){const trip=state.trip,record=jobRecord(trip)
       const fresh=await api.trip(trip.tripId)
@@ -208,7 +233,9 @@ setInterval(async()=>{
         if(fresh.phase!=='DRIVING')state.invitation=null
         paint();return
       }
-      if(JSON.stringify(fresh.receipts)!==JSON.stringify(trip.receipts))say('탑승자 동의 상태가 바뀌었어요. 운행 상태 새로고침으로 확인하세요.')
+      if(JSON.stringify(fresh.receipts)!==JSON.stringify(trip.receipts)||JSON.stringify(fresh.occupants)!==JSON.stringify(trip.occupants)){
+        state.trip=fresh;paint();say('탑승자 또는 동의 상태가 바뀌어 최신 내용으로 갱신했어요.');return
+      }
       if(state.timeline){
         const timeline=await api.timeline(trip.tripId)
         if(epoch!==state.epoch||state.busy||state.trip?.tripId!==trip.tripId)return
@@ -223,4 +250,19 @@ setInterval(async()=>{
     }
   }catch(error){if(epoch===state.epoch){if(state.playing)closePlayer();say(error.message)}}finally{polling=false}
 },3000)
-paint()
+async function start(){
+  if(!location.hash){
+    try{
+      const guest=await loadGuest()
+      if(guest){
+        const api=new DriveApi(guest.origin)
+        api.authorize(guest.accountId,guest.accessToken)
+        state.api=api
+        try { await selectTrip(guest.tripId) }
+        catch(error){say(error.message)}
+      }
+    }catch{say('이 탭의 참여 계정을 복원하지 못했어요. 보관한 계정으로 연결하세요.')}
+  }
+  paint()
+}
+await start()

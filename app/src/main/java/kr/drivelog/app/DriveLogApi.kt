@@ -134,11 +134,11 @@ internal class DriveLogApi(
 
     suspend fun consent(tripId: String, occupant: String, role: String,
                         extraction: Boolean, geminiTranscript: Boolean,
-                        useTripContext: Boolean, shareMarkedClips: Boolean): JSONObject {
+                        useTripContext: Boolean, shareMarkedClips: Boolean, receiptVersion: String? = null): JSONObject {
         require(role in listOf("PASSENGER", "GUARDIAN"))
         return objectRequest("${tripPath(tripId)}/consents/${UUID.fromString(occupant)}/$role", "PUT",
             JSONObject().put("extraction", extraction).put("geminiTranscript", geminiTranscript)
-                .put("useTripContext", useTripContext).put("shareMarkedClips", shareMarkedClips))
+                .put("useTripContext", useTripContext).put("shareMarkedClips", shareMarkedClips), receiptVersion = receiptVersion)
     }
 
     suspend fun invite(tripId: String, under14: Boolean, guardian: String?): JSONObject {
@@ -258,7 +258,8 @@ internal class DriveLogApi(
         method: String = "GET",
         body: JSONObject? = null,
         authenticated: Boolean = true,
-    ): JSONObject = request(path, method, body, authenticated) {
+        receiptVersion: String? = null,
+    ): JSONObject = request(path, method, body, authenticated, receiptVersion = receiptVersion) {
         JSONObject(it.inputStream.bufferedReader().use { reader -> reader.readText() })
     }
 
@@ -272,6 +273,7 @@ internal class DriveLogApi(
         body: JSONObject? = null,
         authenticated: Boolean = true,
         accept: String = "application/json",
+        receiptVersion: String? = null,
         write: (suspend (HttpsURLConnection) -> Unit)? = null,
         read: suspend (HttpsURLConnection) -> T,
     ): T = withContext(Dispatchers.IO) {
@@ -283,6 +285,7 @@ internal class DriveLogApi(
             connection.readTimeout = 12000
             connection.requestMethod = method
             connection.setRequestProperty("Accept", accept)
+            if (receiptVersion != null) connection.setRequestProperty("X-DriveLog-Receipt-Version", receiptVersion)
             if (authenticated) connection.setRequestProperty("Authorization", "Bearer $token")
             if (body != null) {
                 connection.doOutput = true

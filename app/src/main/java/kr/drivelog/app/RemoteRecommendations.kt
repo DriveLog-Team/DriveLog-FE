@@ -19,7 +19,7 @@ internal fun RemoteRecommendations(
     phase: String,
     busy: Boolean,
     request: (suspend () -> Unit) -> Unit,
-    preview: (File) -> Unit,
+    preview: suspend (File) -> Unit,
     saved: suspend () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
