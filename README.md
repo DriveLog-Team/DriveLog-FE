@@ -4,6 +4,22 @@
 
 **차 안에서 기억하고 싶은 순간을 남기고, 도착 후 짧은 영상으로 다시 보는 드라이브 기록 앱입니다.** 함께 웃었던 대화나 터널 끝에서 처음 본 바다를 주행 중 표시해 두고, 주차한 뒤 그날의 타임라인을 다시 열어보는 경험을 만듭니다. 이 저장소에는 Pleos Connect용 차량 앱, 동승자 웹 예제, Android 스토리 공유 앱이 있습니다.
 
+## 공모전 제출 APK 실행
+
+**채원과아이들 · DriveLog(드라이브로그)** — [서명된 차량용 release APK 다운로드](apk/채원과아이들_DriveLog_release.apk)
+
+개발에 사용한 Pleos Connect 에뮬레이터는 **v2.1.0, Android 14(API 34), 가로 2560 × 세로 1440 px, RAM 4 GB**입니다. 전체 디스플레이 중 앱이 차지하는 영역은 Pleos 런처가 정합니다.
+
+1. Android Studio의 Device Manager에서 Pleos Connect v2.1.0 AVD를 시작하고 차량 홈이 나타날 때까지 기다립니다. [Pleos 에뮬레이터 설치 안내](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
+2. Android SDK Platform Tools의 `adb`가 실행되는 터미널에서 저장소 루트를 기준으로 아래 명령을 실행합니다. GitHub에서 APK만 내려받았다면 내려받은 파일 경로를 사용합니다.
+
+   ```sh
+   adb install --user current -r "apk/채원과아이들_DriveLog_release.apk"
+   ```
+
+3. 차량을 주차 상태로 두고 Pleos 앱 목록에서 **DRIVELOG**를 엽니다. 첫 화면에서 탑승자 동의와 기록 설정을 저장하면 주차 홈과 지난 기록을 볼 수 있습니다. 첫 설치 시 기록은 비어 있습니다.
+4. 서버에 있는 운행을 보려면 **운행 연결**에서 팀 BFF의 HTTPS 주소와 발급받은 로그인 세션 토큰을 입력합니다. 앱 실행과 주차 설정에는 계정이 필요하지 않습니다. 아래 MVP 시연의 샘플 기록과 ADB 이벤트는 소스에서 빌드한 debug APK 전용입니다.
+
 ## 우리가 만들고 싶은 경험
 
 - **여행에 집중하기.** 이동 중에는 기억하고 싶은 순간만 표시하고, 상세 기록과 영상은 주차한 뒤 확인합니다.
