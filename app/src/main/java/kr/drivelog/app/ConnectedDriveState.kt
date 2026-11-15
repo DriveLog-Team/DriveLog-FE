@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 internal class ConnectedDriveState : ViewModel() {
     private var client by mutableStateOf<DriveLogApi?>(null)
     val api: DriveLogApi? get() = client
+    var accountId by mutableStateOf<String?>(null)
+        private set
     var trip by mutableStateOf<RemoteTrip?>(null)
         private set
     var timeline by mutableStateOf<RemoteTimeline?>(null)
@@ -26,14 +28,15 @@ internal class ConnectedDriveState : ViewModel() {
     private val sent = mutableSetOf<Pair<String, String>>()
 
     val hasActiveTrip: Boolean
-        get() = api != null && trip != null && timeline?.phase == "DRIVING"
+        get() = api != null && trip != null && trip?.phase == "DRIVING"
 
     fun requestShorts() {
         if (hasActiveTrip) send(command = null)
     }
 
-    fun connect(api: DriveLogApi) {
+    fun connect(api: DriveLogApi, account: String) {
         disconnect()
+        accountId = UUID.fromString(account).toString()
         client = api
     }
 
@@ -45,21 +48,22 @@ internal class ConnectedDriveState : ViewModel() {
         timeline = null
         markMessage = null
         client = null
+        accountId = null
     }
 
-    fun select(value: RemoteTrip, data: RemoteTimeline) {
+    fun select(value: RemoteTrip, data: RemoteTimeline?) {
         trip = value
-        timeline = data
+        timeline = data?.copy(phase = value.phase)
     }
 
     fun send(command: String?, requestId: String? = null) {
         val selected = trip ?: return
         val data = timeline ?: return
-        if (data.phase !in listOf("DRIVING", "PENDING", "UPLOAD")) return
+        if (data.phase != "DRIVING") return
         val id = if (requestId == null) UUID.randomUUID().toString()
             else runCatching { UUID.fromString(requestId).toString() }.getOrNull() ?: return
         val offset = Instant.now().toEpochMilli() - data.startedAt.toEpochMilli()
-        if (offset < 0 || (selected.id to id) in sent || pending != null || submission?.isActive == true) return
+        if (offset !in 0 until 86_400_000L || (selected.id to id) in sent || pending != null || submission?.isActive == true) return
         pending = PendingMark(selected.id, id, offset, command)
         retry()
     }

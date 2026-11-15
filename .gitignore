@@ -6,3 +6,7 @@ local.properties
 *.keystore
 .idea/
 .DS_Store
+
+.kotlin/
+
+node_modules/
