@@ -42,9 +42,9 @@ node dev-server.js --fixture
 
 ## 서버에 배포할 파일과 필요한 설정
 
-배포 대상은 `index.html`, `styles.css`, `app.js`, `api.js`, `sha256.js`, `vault.js`, `guest-session.js`다. `dev-server.js`, 테스트, node_modules는 배포하지 않는다. 예를 들어 서버의 `/companion/` 아래에서 정적 제공한다.
+배포 대상은 `index.html`, `styles.css`, `app.js`, `api.js`, `sha256.js`, `vault.js`, `guest-session.js`다. `dev-server.js`, 테스트, node_modules는 배포하지 않는다. 예를 들어 서버의 `/api/companion/` 아래에서 정적 제공한다.
 
-초대 링크는 `https://<host>/companion/index.html#<tripId>.<code>`로 연결해야 한다. 휴대폰 웹에서 발급한 초대는 현재 컴패니언 페이지 주소로 링크를 구성한다. 차량 앱이 표시하는 서버 발급 초대 URL도 해당 호스트 화면으로 연결되도록 서버 설정이 필요하다.
+초대 링크는 `https://<host>/api/companion/index.html#<tripId>.<code>`로 연결해야 한다. 휴대폰 웹에서 발급한 초대는 현재 컴패니언 페이지 주소로 링크를 구성한다. 차량 앱이 표시하는 서버 발급 초대 URL도 해당 호스트 화면으로 연결되도록 서버 설정이 필요하다.
 
 가능하면 API와 같은 HTTPS 원점에서 제공한다. 서로 다른 원점에서 제공하면 서버가 해당 프론트 원점에 대해 CORS를 허용해야 한다. 필요한 요청 헤더는 Authorization, Content-Type, X-Content-SHA256, X-DriveLog-Receipt-Version이고 메서드는 GET, POST, PUT, DELETE다. 브라우저 보안을 우회하는 로컬 프록시는 제공하지 않는다.
 

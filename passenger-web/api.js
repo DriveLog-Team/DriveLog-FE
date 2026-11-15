@@ -99,8 +99,8 @@ export class DriveApi {
   invite(id, under14, guardian) { return this.json(this.tripPath(id)+'/invites',{method:'POST',body:{under14,...(under14?{guardian:uuid(guardian)}:{})}}) }
   context(id, context) { return this.json(this.tripPath(id)+'/context',{method:'PUT',body:context}) }
   job(id) { return this.json(`/api/media/jobs/${uuid(id)}`) }
-  createJob(id, profile) { if(!['STORY_15','SHORT_30'].includes(profile))throw new Error('출력 형식을 확인하세요.'); return this.json('/api/media/jobs',{method:'POST',body:{tripId:tripId(id),profile}}) }
-  edit(job, body) { return this.json(`/api/media/jobs/${uuid(job)}/edits`,{method:'POST',body}) }
+  createJob(id, profile, key) { if(!['STORY_15','SHORT_30'].includes(profile))throw new Error('출력 형식을 확인하세요.'); return this.json('/api/media/jobs',{method:'POST',headers:key?{'Idempotency-Key':uuid(key)}:{},body:{tripId:tripId(id),profile}}) }
+  edit(job, body, key) { return this.json(`/api/media/jobs/${uuid(job)}/edits`,{method:'POST',headers:key?{'Idempotency-Key':uuid(key)}:{},body}) }
   finalize(id, choice) { return this.json(this.tripPath(id)+'/finalize',{method:'POST',body:{jobId:uuid(choice.jobId),moment:choice.moment}}) }
   discard(id) { return this.json(this.tripPath(id),{method:'DELETE'}) }
   handoff(id, choice) { return choice ? this.json(this.cardPath(choice.jobId,choice.moment)+'/handoffs',{method:'POST'}) : this.json(`/api/library/${tripId(id)}/handoffs`,{method:'POST'}) }

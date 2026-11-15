@@ -78,7 +78,7 @@ function paint(){
 }
 function connectForm(){
   add(root,el('p','DRIVELOG COMPANION','eyebrow'),el('h1','함께 남기는 순간'),el('p','초대받은 드라이브에 참여하거나, 발급받은 개인 계정으로 내 기록을 열어보세요.','muted'))
-  const panel=section('내 계정 연결'),form=el('form'),origin=field(form,'HTTPS 서버 주소',(location.pathname.startsWith('/companion/') || ['localhost','127.0.0.1'].includes(location.hostname))?location.origin:DEFAULT_ORIGIN,'url'),account=field(form,'개인 accountId'),token=field(form,'개인 accessToken','','password')
+  const panel=section('내 계정 연결'),form=el('form'),origin=field(form,'HTTPS 서버 주소',(location.pathname.startsWith('/api/companion/') || ['localhost','127.0.0.1'].includes(location.hostname))?location.origin:DEFAULT_ORIGIN,'url'),account=field(form,'개인 accountId'),token=field(form,'개인 accessToken','','password')
   account.autocomplete='off';add(form,el('small','팀 서버 토큰은 입력하지 마세요. 개인 토큰은 이 화면의 메모리에만 유지돼요.'))
   const remember=check(form,'이 기기에 암호화해 계정 보관 (선택)'),password=field(form,'기기 계정 잠금 암호 (8자 이상)','','password')
   password.autocomplete='new-password';password.hidden=true;form.querySelector(`label[for="${password.id}"]`).hidden=true
@@ -188,22 +188,28 @@ function uploadPanel(trip){
 
 }
 function jobRecord(trip){let record=state.jobs.get(trip.tripId);if(!record){record={jobId:stored(pendingKey('job',trip.tripId)),status:null,profile:stored(pendingKey('profile',trip.tripId))||'STORY_15',pendingSave:stored(pendingKey('save',trip.tripId))};state.jobs.set(trip.tripId,record)}return record}
-async function followJob(trip,jobId){const record=jobRecord(trip);record.jobId=jobId;record.status=null;persist(pendingKey('job',trip.tripId),jobId);await pollJob(trip)}
+function operationKey(trip){
+  const slot=pendingKey('request',trip.tripId)
+  const key=stored(slot)||crypto.randomUUID()
+  persist(slot,key)
+  return key
+}
+async function followJob(trip,jobId){const record=jobRecord(trip);record.jobId=jobId;record.status=null;persist(pendingKey('job',trip.tripId),jobId);sessionStorage.removeItem(pendingKey('request',trip.tripId));await pollJob(trip)}
 async function pollJob(trip){const record=jobRecord(trip);record.status=await state.api.job(record.jobId)}
 async function finalize(trip,choice){const record=jobRecord(trip);persist(pendingKey('save',trip.tripId),choice);record.pendingSave=choice;const response=await state.api.finalize(trip.tripId,choice);state.trip=response;if(response.phase==='SAVED'){record.pendingSave=null;sessionStorage.removeItem(pendingKey('save',trip.tripId));state.page='library';state.library=await state.api.library()}else say('영상을 보관 중이에요. 같은 선택을 유지하며 상태를 확인하세요.')}
 function jobPanel(trip){
   const record=jobRecord(trip);if(trip.phase!=='READY'&&!record.jobId)return
   const panel=section('추천 영상')
-  if(!record.jobId){const select=el('select');select.setAttribute('aria-label','영상 길이');const profiles=state.profiles.filter(p=>p.renderingAvailable&&['STORY_15','SHORT_30'].includes(p.id));profiles.forEach(p=>select.append(option(`${p.targetDurationMs/1000}초 영상`,p.id)));if(!profiles.length){panel.append(el('p','현재 사용할 수 있는 출력 옵션을 확인하세요.'));panel.append(button('출력 옵션 다시 확인',()=>run(async()=>{state.profiles=await state.api.profiles()})));return}add(panel,select,button('추천 만들기',()=>run(async()=>{record.profile=select.value;persist(pendingKey('profile',trip.tripId),select.value);const response=await state.api.createJob(trip.tripId,select.value);await followJob(trip,response.jobId)}),true));return}
+  if(!record.jobId){const select=el('select');select.setAttribute('aria-label','영상 길이');const profiles=state.profiles.filter(p=>p.renderingAvailable&&['STORY_15','SHORT_30'].includes(p.id));profiles.forEach(p=>select.append(option(`${p.targetDurationMs/1000}초 영상`,p.id)));if(!profiles.length){panel.append(el('p','현재 사용할 수 있는 출력 옵션을 확인하세요.'));panel.append(button('출력 옵션 다시 확인',()=>run(async()=>{state.profiles=await state.api.profiles()})));return}add(panel,select,button('추천 만들기',()=>run(async()=>{record.profile=select.value;persist(pendingKey('profile',trip.tripId),select.value);const response=await state.api.createJob(trip.tripId,select.value,operationKey(trip));await followJob(trip,response.jobId)}),true));return}
   if(record.pendingSave)panel.append(button('저장하던 같은 영상 다시 보관',()=>run(()=>finalize(trip,record.pendingSave)),true))
   if(!record.status){panel.append(button('저장된 추천 작업 이어서 보기',()=>run(()=>pollJob(trip))));return}
   const status=record.status
   if(['QUEUED','RUNNING'].includes(status.state)){panel.append(el('p',status.state==='QUEUED'?'추천 작업 대기 중이에요.':'추천 영상을 만들고 있어요.'));return}
-  if(status.state==='FAILED'){panel.append(el('p','추천 작업이 실패했어요.'));if(!record.pendingSave)panel.append(button('새 작업으로 재시도',()=>run(async()=>{const response=await state.api.createJob(trip.tripId,record.profile);await followJob(trip,response.jobId)})));return}
+  if(status.state==='FAILED'){panel.append(el('p','추천 작업이 실패했어요.'));if(!record.pendingSave)panel.append(button('새 작업으로 재시도',()=>run(async()=>{const response=await state.api.createJob(trip.tripId,record.profile,operationKey(trip));await followJob(trip,response.jobId)})));return}
   const cards=status.result?.cards||[]
   if(!cards.length){panel.append(el('p','추천할 장면이 없어요.'));return}
   for(const card of cards){const row=el('article',undefined,'card');add(row,el('span',`${(card.endMs-card.startMs)/1000}초`,'badge'),el('h3',card.title),el('p',card.summary||''));if(card.recommendation?.reason)row.append(el('p',card.recommendation.reason,'muted'));if(card.soundEvent)row.append(el('p',typeof card.soundEvent==='string'?card.soundEvent:'소리 이벤트가 연결된 장면이에요.','muted'));row.append(button('선택 영상 재생',()=>run(()=>play(state.api.cardPath(record.jobId,card.id),{kind:'job',tripId:trip.tripId}),{render:false})))
-    if(!record.pendingSave){row.append(button('휴대폰 저장 QR',()=>run(async()=>showTicket(await state.api.handoff(trip.tripId,{jobId:record.jobId,moment:card.id}))),false));row.append(button('이 영상 보관',()=>{if(confirm(`“${card.title}” 편집 버전과 각자 선택한 표시 클립을 보관할까요?`))run(()=>finalize(trip,{jobId:record.jobId,moment:card.id}))},true));const details=el('details'),form=el('form');details.append(el('summary','제목·구간·자막 편집'));const title=field(form,'제목',card.title),start=field(form,'시작 (운행 기준 초)',String(card.startMs/1000)),end=field(form,'끝 (운행 기준 초)',String(card.endMs/1000)),captions=card.cues.map((cue,i)=>field(form,`자막 ${i+1}`,cue.text));form.append(button('새 버전으로 편집',()=>run(async()=>{const body=validateEdit(card,{title:title.value,start:start.value,end:end.value,captions:captions.map(f=>f.value)}),response=await state.api.edit(record.jobId,body);await followJob(trip,response.jobId)})));details.append(form);row.append(details)}panel.append(row)
+    if(!record.pendingSave){row.append(button('휴대폰 저장 QR',()=>run(async()=>showTicket(await state.api.handoff(trip.tripId,{jobId:record.jobId,moment:card.id}))),false));row.append(button('이 영상 보관',()=>{if(confirm(`“${card.title}” 편집 버전과 각자 선택한 표시 클립을 보관할까요?`))run(()=>finalize(trip,{jobId:record.jobId,moment:card.id}))},true));const details=el('details'),form=el('form');details.append(el('summary','제목·구간·자막 편집'));const title=field(form,'제목',card.title),start=field(form,'시작 (운행 기준 초)',String(card.startMs/1000)),end=field(form,'끝 (운행 기준 초)',String(card.endMs/1000)),captions=card.cues.map((cue,i)=>field(form,`자막 ${i+1}`,cue.text));form.append(button('새 버전으로 편집',()=>run(async()=>{const body=validateEdit(card,{title:title.value,start:start.value,end:end.value,captions:captions.map(f=>f.value)}),response=await state.api.edit(record.jobId,body,operationKey(trip));await followJob(trip,response.jobId)})));details.append(form);row.append(details)}panel.append(row)
   }
 }
 function libraryPage(){
