@@ -46,9 +46,9 @@ node dev-server.js --fixture
 
 초대 링크는 `https://<host>/api/companion/index.html#<tripId>.<code>`로 연결해야 한다. 휴대폰 웹에서 발급한 초대는 현재 컴패니언 페이지 주소로 링크를 구성한다. 차량 앱이 표시하는 서버 발급 초대 URL도 해당 호스트 화면으로 연결되도록 서버 설정이 필요하다.
 
-가능하면 API와 같은 HTTPS 원점에서 제공한다. 서로 다른 원점에서 제공하면 서버가 해당 프론트 원점에 대해 CORS를 허용해야 한다. 필요한 요청 헤더는 Authorization, Content-Type, X-Content-SHA256, X-DriveLog-Receipt-Version이고 메서드는 GET, POST, PUT, DELETE다. 브라우저 보안을 우회하는 로컬 프록시는 제공하지 않는다.
+API와 같은 HTTPS 원점에서 제공하면 별도 CORS 설정 없이 초대와 계정 연결을 사용할 수 있다. 서로 다른 원점에서 제공하면 서버가 해당 프론트 원점, 요청 헤더 Authorization, Content-Type, X-Content-SHA256, X-DriveLog-Receipt-Version, Idempotency-Key와 메서드 GET, POST, PUT, DELETE를 허용해야 한다.
 
-이 저장소에서 운영 호스팅이나 CORS 설정을 변경하지 않았다. 실제 계정·원본으로 전체 흐름과 iOS/Android 브라우저를 검증해야 한다.
+[DriveLog BE의 컴패니언 배포 소스](https://github.com/DriveLog-Team/DriveLog-BE/tree/fix/companion-consent-and-hosting/src/main/resources/static/api/companion)는 위 7개 파일을 서버 JAR에 포함한다. 프런트 변경 시 같은 파일을 갱신한다.
 
 ## 기존 임베드 컴포넌트
 
