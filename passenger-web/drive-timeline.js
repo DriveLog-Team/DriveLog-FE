@@ -50,7 +50,12 @@ export class DriveTimeline extends HTMLElement {
     if (!s?.open || s.busy) return false
     if (!this.#pending) this.#pending = {
       route, id: crypto.randomUUID(),
-      body: { atMs: Math.max(0, Date.now() - s.start), ...(command ? { command } : { kind: 'TAP' }) }
+      body: { atMs: Date.now() - s.start, ...(command ? { command } : { kind: 'TAP' }) }
+    }
+    if (!Number.isFinite(this.#pending.body.atMs) || this.#pending.body.atMs < 0 || this.#pending.body.atMs >= 86400000) {
+      this.#pending = undefined
+      this.#say('기기 시각과 운행 시작 시각을 확인해 주세요.')
+      return false
     }
     const { route: pendingRoute, id, body } = this.#pending
     s.busy = true
@@ -61,7 +66,7 @@ export class DriveTimeline extends HTMLElement {
       })
       if (s !== this.#session) return false
       if (!response.ok) {
-        if (response.status >= 400 && response.status < 500) this.#pending = undefined
+        if ([400,403,404,409,410,422].includes(response.status)) this.#pending = undefined
         throw new Error(response.status === 422 ? '저장 명령을 다시 말해 주세요.' : response.status === 409 ? '이 표시를 추가할 수 없어요.' : '표시 요청을 다시 시도해 주세요.')
       }
       this.#pending = undefined
@@ -98,10 +103,10 @@ export class DriveTimeline extends HTMLElement {
       const data = await res.json()
       if (s !== this.#session) return
       s.start = Date.parse(data.startedAt)
-      s.allowedClips = new Set(data.entries.map(entry => entry.clipUrl).filter(Boolean))
-      s.open = Number.isFinite(s.start) && ['DRIVING','PENDING','UPLOAD'].includes(data.phase)
+      s.allowedClips = new Set(data.entries.filter(entry => entry.state === 'CLIP_READY').map(entry => entry.clipUrl).filter(Boolean))
+      s.open = Number.isFinite(s.start) && data.phase === 'DRIVING' && Date.now()-s.start >= 0 && Date.now()-s.start < 86400000
       this.#el('#mark').disabled = s.busy || !s.open
-      if (s.playing && !data.entries.some(e => e.clipUrl === s.playing)) this.#stopVideo()
+      if (s.playing && !data.entries.some(e => e.state === 'CLIP_READY' && e.clipUrl === s.playing)) this.#stopVideo()
       const list = this.#el('ol')
       list.hidden = s.vehicle && !s.parked
       if (list.hidden) return
@@ -111,14 +116,28 @@ export class DriveTimeline extends HTMLElement {
         const at = entry.mark.atMs
         time.textContent = Number.isFinite(s.start) ? new Date(s.start + at).toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit',hour12:false}) : Math.floor(at/60000)+'분'
         const label = document.createElement('span')
-        label.textContent = [entry.title || (entry.mark.kind === 'TAP' ? '버튼으로 남긴 순간' : '말로 남긴 순간'), entry.place,
+        label.textContent = [entry.title || (entry.mark.kind === 'TAP' ? '버튼으로 남긴 순간' : '말로 남긴 순간'), entry.authorName, entry.place,
           entry.state === 'NO_CLIP' ? '재생할 클립 없음' : entry.state === 'SHARING_DISABLED' ? '공유 동의 필요' : ''].filter(Boolean).join(' · ')
         li.append(time,label)
-        if (entry.clipUrl) {
+        if (entry.state === 'CLIP_READY' && entry.clipUrl) {
           const play = document.createElement('button')
           play.textContent = '재생'
           play.onclick = () => this.#play(entry.clipUrl).catch(() => this.#say('영상을 불러올 수 없어요.'))
           li.append(play)
+          if (!['SAVED','DISCARDING','DISCARDED'].includes(data.phase)) {
+            const pick = document.createElement('button')
+            pick.textContent = '내 앨범에 선택'
+            pick.onclick = async () => {
+              pick.disabled = true
+              try {
+                const response = await s.request(this.#path('picks/' + encodeURIComponent(entry.mark.id)), { method: 'PUT' })
+                if (!response.ok) throw new Error('pick')
+                if (s === this.#session) this.#say('내 앨범에 보관할 표시로 선택했어요.')
+              } catch { if (s === this.#session) this.#say('동의와 운행 상태를 확인하고 다시 시도해 주세요.') }
+              finally { pick.disabled = false }
+            }
+            li.append(pick)
+          }
         }
         return li
       }))
@@ -137,6 +156,8 @@ export class DriveTimeline extends HTMLElement {
   async #play(path) {
     const s = this.#session
     if (!path.startsWith(this.#path('marks/'))) throw new Error('clip')
+    const safe = new URL(path, location.origin)
+    if (safe.origin !== location.origin) throw new Error('clip')
     const res = await s.request(path)
     if (!res.ok) throw new Error('clip')
     const blob = await res.blob()

@@ -22,7 +22,14 @@ limited() {
 [ -x "$adb" ] && [ -x "$emulator" ] || fail "Android SDK를 찾을 수 없어요. ANDROID_HOME을 확인하세요."
 avd_path=$(sed -n 's/^path=//p' "$avd_home/$avd.ini")
 [ -f "$avd_path/config.ini" ] || fail "Pleos 기기를 찾을 수 없어요: $avd"
-grep -q '^image.sysdir.1=.*android-34/pleos_car_emulator/' "$avd_path/config.ini" ||
+image_dir=$(sed -n 's/^image.sysdir.1=//p' "$avd_path/config.ini")
+case "$image_dir" in
+    /*) image_properties="$image_dir/source.properties" ;;
+    *) image_properties="$sdk/$image_dir/source.properties" ;;
+esac
+[ -f "$image_properties" ] &&
+    grep -q '^AndroidVersion.ApiLevel=34$' "$image_properties" &&
+    grep -q '^Addon.VendorId=42dot$' "$image_properties" ||
     fail "Device Manager에서 Pleos Connect 전용 API 34 이미지를 선택하세요."
 
 cd "$root"
