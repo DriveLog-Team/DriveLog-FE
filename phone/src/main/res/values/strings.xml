@@ -1,0 +1,11 @@
+<resources>
+    <string name="share_story">인스타 스토리에 공유</string>
+    <string name="configure_id">Meta 앱 ID 설정</string>
+    <string name="scan_qr">DriveLog에서 선택한 영상의 QR을 스캔하세요.</string>
+    <string name="reopen_story">스토리 작성기를 다시 열 수 있습니다.</string>
+    <string name="setup_required">처음 한 번 DriveLog의 공개 Meta 앱 ID를 설정하세요. 이 단계에서는 QR을 소모하지 않습니다.</string>
+    <string name="install_instagram">Instagram을 설치하거나 업데이트한 뒤 다시 누르세요. 이 단계에서는 QR을 소모하지 않습니다.</string>
+    <string name="receiving_video">선택한 영상을 받는 중입니다…</string>
+    <string name="finish_in_instagram">Instagram에서 영상을 확인하고 게시하세요.</string>
+    <string name="try_again">작성기를 열 수 없습니다. Instagram을 확인한 뒤 다시 누르세요.</string>
+</resources>

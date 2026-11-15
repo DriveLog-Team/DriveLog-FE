@@ -1,0 +1,6 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/drivelog_cream" />
+    <item
+        android:width="72dp" android:height="72dp" android:gravity="center"
+        android:drawable="@drawable/ic_drivelog_mark" />
+</layer-list>

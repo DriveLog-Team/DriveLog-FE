@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <queries><package android:name="com.instagram.android"/></queries>
+    <application android:label="DriveLog 스토리" android:allowBackup="false"
+        android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light">
+        <activity android:name=".StoryActivity" android:exported="true" android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="drivelog" android:host="story"/>
+            </intent-filter>
+        </activity>
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="kr.drivelog.phone.clips"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/story_paths"/>
+        </provider>
+    </application>
+</manifest>
