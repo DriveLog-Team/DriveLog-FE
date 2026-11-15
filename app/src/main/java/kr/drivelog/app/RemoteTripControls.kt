@@ -28,6 +28,16 @@ internal fun RemoteTripControls(
     discarded: suspend () -> Unit,
 ) {
     val owner = trip.owner == accountId
+    if (trip.phase == "DRIVING" && trip.isOccupant(accountId)) {
+        var name by remember(trip.id) { mutableStateOf("") }
+        var named by remember(trip.id) { mutableStateOf(false) }
+        OutlinedTextField(name, { name = it; named = false }, enabled = !busy,
+            label = { Copy("타임라인에 표시할 이름", 20) })
+        Action("이름 저장", enabled = !busy && runCatching { validDisplayName(name) }.isSuccess) {
+            request { api.displayName(trip.id, name); named = true; updated(api.trip(trip.id).remoteTrip()) }
+        }
+        if (named) Copy("이름을 저장했어요.", 20)
+    }
     if (trip.phase == "DRIVING" && owner) {
         InvitePanel(api, trip, busy, request)
     }
@@ -147,6 +157,7 @@ private fun UploadPanel(
     val context = LocalContext.current
     var departure by remember(trip.id) { mutableStateOf("") }
     var destination by remember(trip.id) { mutableStateOf("") }
+    var events by remember(trip.id) { mutableStateOf<List<DriveEvent>>(emptyList()) }
     var message by remember(trip.id) { mutableStateOf<String?>(null) }
     Copy("원본 영상 업로드", 28, strong = true)
     Copy("전방·후방 MP4를 각각 전송하세요. 두 영상이 수락되면 추천을 만들 수 있어요. 영상당 최대 8 GiB이며 지정된 음성 소스에 오디오가 필요해요.", 20)
@@ -154,9 +165,28 @@ private fun UploadPanel(
         Copy("장소를 활용하려면 두 번째 영상 전송 전에 등록하세요.", 20)
         OutlinedTextField(departure, { departure = it }, enabled = !busy, label = { Copy("출발지", 20) })
         OutlinedTextField(destination, { destination = it }, enabled = !busy, label = { Copy("도착지", 20) })
+        var eventTime by remember(trip.id) { mutableStateOf("") }
+        var eventLabel by remember(trip.id) { mutableStateOf("") }
+        var eventKind by remember(trip.id) { mutableStateOf("LANDMARK") }
+        Copy("기억할 장소 이벤트", 24, strong = true)
+        OutlinedTextField(eventTime, { eventTime = it }, enabled = !busy,
+            label = { Copy("운행 시작 후 시각 (초)", 20) }, singleLine = true)
+        OutlinedTextField(eventLabel, { eventLabel = it }, enabled = !busy,
+            label = { Copy("장소 이름", 20) }, singleLine = true)
+        listOf("LANDMARK" to "명소", "NEAR_ARRIVAL" to "도착 임박", "ARRIVAL" to "도착").forEach { (kind, label) ->
+            Action(label + if (eventKind == kind) " · 선택됨" else "", enabled = !busy) { eventKind = kind }
+        }
+        val draft = driveEvent(eventTime, eventKind, eventLabel)
+        Action("장소 이벤트 추가", enabled = !busy && draft != null) {
+            draft?.let { events = (events + it).sortedBy { event -> event.atMs }; eventTime = ""; eventLabel = "" }
+        }
+        events.forEachIndexed { index, event ->
+            Copy("${millisecondsToSeconds(event.atMs)}초 · ${event.label}", 20)
+            Action("이 장소 이벤트 제외", enabled = !busy) { events = events.filterIndexed { i, _ -> i != index } }
+        }
         Action("출발지·도착지 등록", enabled = !busy && departure.isNotBlank() && destination.isNotBlank()) {
             request {
-                updated(api.context(trip.id, departure.trim(), destination.trim()).remoteTrip())
+                updated(api.context(trip.id, departure.trim(), destination.trim(), events).remoteTrip())
                 message = "출발지와 도착지를 등록했어요."
             }
         }

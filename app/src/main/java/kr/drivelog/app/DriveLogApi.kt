@@ -41,6 +41,21 @@ internal data class SavedClip(
 )
 internal data class Handoff(val id: String, val png: ByteArray, val expiresAt: Instant)
 
+internal data class ExportProfile(val id: String, val durationMs: Long, val available: Boolean)
+internal data class DriveEvent(val atMs: Long, val kind: String, val label: String)
+
+internal fun validDisplayName(value: String): String {
+    val name = value.trim()
+    require(name.codePointCount(0, name.length) in 1..32 && name.none { Character.isISOControl(it) })
+    return name
+}
+
+internal fun driveEvent(seconds: String, kind: String, label: String): DriveEvent? {
+    val atMs = secondsToMs(seconds) ?: return null
+    if (atMs !in 0 until 86_400_000L || kind !in listOf("LANDMARK", "NEAR_ARRIVAL", "ARRIVAL") || label.isBlank()) return null
+    return DriveEvent(atMs, kind, label.trim())
+}
+
 internal class ApiError(val code: Int) : IOException()
 
 internal class DriveLogApi(
@@ -54,6 +69,18 @@ internal class DriveLogApi(
     }.toString().trimEnd('/')
 
     suspend fun status(): String = objectRequest("/api/status", authenticated = false).getString("status")
+
+    suspend fun profiles(): List<ExportProfile> = request("/api/export-profiles", authenticated = false) { connection ->
+        JSONArray(connection.inputStream.bufferedReader().use { it.readText() }).objects().map {
+            ExportProfile(it.getString("id"), it.getLong("targetDurationMs"), it.getBoolean("renderingAvailable"))
+        }
+    }
+
+    suspend fun integrations(): JSONObject = objectRequest("/api/integrations", authenticated = false)
+
+    suspend fun displayName(tripId: String, value: String) {
+        objectRequest("${tripPath(tripId)}/display-name", "PUT", JSONObject().put("displayName", validDisplayName(value)))
+    }
 
     suspend fun trips(): List<RemoteTrip> = arrayRequest("/api/private-trips").map {
         it.remoteTrip()
@@ -120,9 +147,9 @@ internal class DriveLogApi(
         return objectRequest("${tripPath(tripId)}/invites", "POST", body)
     }
 
-    suspend fun context(tripId: String, departure: String, destination: String): JSONObject =
+    suspend fun context(tripId: String, departure: String, destination: String, events: List<DriveEvent> = emptyList()): JSONObject =
         objectRequest("${tripPath(tripId)}/context", "PUT", JSONObject()
-            .put("departure", departure).put("destination", destination).put("events", JSONArray()))
+            .put("departure", departure).put("destination", destination).put("events", JSONArray(events.map { JSONObject().put("atMs", it.atMs).put("kind", it.kind).put("label", it.label) })))
 
     suspend fun pick(tripId: String, markId: String) {
         objectRequest("${tripPath(tripId)}/picks/${UUID.fromString(markId)}", "PUT")

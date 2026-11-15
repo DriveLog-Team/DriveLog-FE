@@ -263,6 +263,14 @@ private fun ParkedHome(state: DriveLogState, onOpen: (String) -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 24.dp else 32.dp)) {
             if (compact) Status("주차 중", Blue, 20)
             if (state.session != null) SessionPanel(state)
+            if (BuildConfig.DEBUG) {
+                Action("주행 시연 시작", enabled = state.platformAccess == Access.PARKED &&
+                    state.preferences.automatic && state.preferences.consent && state.session?.paused != true) {
+                    state.simulateDrive()
+                }
+                Copy("시연에서는 실제 음성·영상을 수집하지 않아요. 실제 연동은 위의 운행 연결에서 시작하세요.", 20, TextMuted)
+            }
+
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!history) {
@@ -477,7 +485,7 @@ private fun MomentRow(item: Moment, showDate: Boolean, showDivider: Boolean, ope
         status = "${item.source.label} · ${item.status.label}",
         highlighted = item.status == MomentStatus.SAMPLE,
         showDivider = showDivider,
-        route = if (item.status == MomentStatus.SAMPLE) DriveRoute() else null,
+        route = DriveRoute(),
         onClick = open,
     )
 }

@@ -1,16 +1,61 @@
-# DriveLog-FE
-동승자 폰과 주차 화면에 같은 주행의 표시와 보호 클립을 보여주는 웹 컴포넌트다. 빌드 없이 ES 모듈로 불러온다.
+# DriveLog 휴대폰 컴패니언
 
-```html
-<drive-timeline></drive-timeline>
-<script type="module">
-  import './drive-timeline.js'
-  const timeline = document.querySelector('drive-timeline')
-  // 앱이 팀 BFF에서 받아온 현재 사용자의 주행 ID를 사용한다.
-  timeline.connect({ tripId, request: (path, options) => fetch(path, options) })
-</script>
+`index.html`은 합성 데이터 예시와 분리된 실제 API 연결 화면이다. 별도 프레임워크 빌드 없이 정적 파일을 HTTPS로 제공한다. 개인 accountId·accessToken 연결과 초대 URL의 `#tripId.code` 참여를 지원한다.
+
+## 사용할 수 있는 흐름
+
+- 초대 수락·이름 입력 → 개인 계정 연결 → 주행 중 순간 표시
+- 이름 변경, 본인·지정 보호자의 추출·전사·위치·공유 동의
+- 타임라인 재생·내 앨범 표시 선택, 보관함 재생
+- 소유자의 성인·아동 초대 발급, 탑승 성인 보호자 선택
+- 소유자의 전방·후방 MP4 업로드·재시도·취소, 출발지·도착지·장소 이벤트 등록
+- 서버 출력 옵션에 따른 15·30초 추천, 같은 작업 조회, 제목·구간·자막 편집
+- 편집 결과의 새 작업 ID로 재생·QR·보관, 저장 응답 유실 시 같은 선택 재시도
+- QR 만료·회수, 운행 전체 삭제 확인
+
+토큰은 기본적으로 메모리에 유지한다. 사용자가 **기기 계정 보관**을 선택하면 8자 이상 암호에서 PBKDF2로 키를 만들어 AES-GCM으로 계정 정보를 암호화한 뒤 브라우저에 저장한다. 잠금 암호와 평문 토큰은 저장하지 않는다. 기기에 저장한 계정은 연결 화면에서 잠금을 풀거나 삭제할 수 있다. 공용 기기에서는 보관을 선택하지 않는다. 계정 보관은 HTTPS 및 브라우저 Web Crypto 지원이 필요하다.
+
+초대 수락의 claimKey는 난수 32바이트를 base64url로 변환한다. 응답이 끊기면 같은 탭에서 같은 claimKey와 이름으로 재시도한다. 재시도 정보만 sessionStorage에 보관하며, 초대 코드 대신 해시를 저장 키로 사용한다. 수락 성공 후 URL 조각과 재시도 정보를 지운다. 기기 계정 보관을 선택하지 않은 경우 새로고침 후 다시 개인 계정 연결이 필요하다.
+
+서버가 반환한 영상 URL에도 같은 원점의 API 경로만 허용한다. 인증 헤더를 붙여 영상을 받은 뒤 Blob URL로 재생하고, 닫거나 화면을 숨기면 회수한다. 재생 중 접근 상태를 주기적으로 다시 확인하며 공유 철회·삭제·조회 실패 시 재생을 닫는다. 개인 재생본의 외부 공유 기능은 제공하지 않고, 공유는 서버가 발급한 공유본 QR을 사용한다.
+
+업로드는 1 MiB 단위 SHA-256 계산 후 Blob 원본을 전송한다. 브라우저가 Content-Length를 설정하며 앱은 금지된 해당 헤더를 직접 설정하지 않는다. 파일당 8 GiB 제한, 빈 파일, 취소와 부분 실패를 처리한다. 서버가 영상 스트림·오디오·해시·규격을 최종 검증한다.
+
+## 로컬 실행
+
+```sh
+cd passenger-web
+npm ci
+npm test
+npm start
 ```
 
-BFF는 로그인 세션의 개인 토큰으로 요청을 전달한다. 출발 등록은 팀 서버에서 호출한다. 차량 화면에서는 `vehicle: true, parked: false`로 연결하고 기어 상태 변경 시 `setParked(true|false)`를 호출한다. 차량에서 인식한 최종 저장 명령을 `await timeline.voice(command)`로 전달한다. 성공 시 `moment-marked` 이벤트의 `detail.acknowledgement`를 차량 TTS로 읽는다. 출발 시각과 폰·차량 시계를 동기화한다.
+`http://127.0.0.1:4173/index.html`을 연다. 기본 실행은 정적 파일만 제공하며 계정·영상 데이터를 생성하지 않는다. 로컬 API는 없으므로 실제 서버 원점을 입력하거나 아래 합성 모드를 사용한다.
 
-화면 예시는 이 폴더에서 `python -m http.server 8080` 실행 후 `http://localhost:8080/example.html`에서 확인한다. 예시는 합성 데이터로 동작한다.
+```sh
+node dev-server.js --fixture
+```
+
+합성 모드에서 개인 accountId `22222222-2222-4222-8222-222222222222`, 개인 토큰 `fixture-owner`로 연결한다. 화면 상단에 합성 데이터임을 표시한다. 주차 상태 전환은 개발용 `POST /__fixture/park`로 테스트할 수 있다. 이 모드는 실제 MP4 렌더링·재생이나 QR 인계 검증용이 아니다. 합성 API 서버를 운영으로 배포하지 않는다.
+
+화면 테스트는 happy-dom에서 실제 HTML과 이벤트 핸들러를 실행한다. 응답 유실 후 표시 중복 방지, 초대 claimKey 재사용, 소유자의 동의·업로드·편집·선택 버전 보관을 검증한다. 실제 브라우저 레이아웃·파일 공급자·영상 코덱·실기기 공유를 대신하지 않는다.
+
+## 서버에 배포할 파일과 필요한 설정
+
+배포 대상은 `index.html`, `styles.css`, `app.js`, `api.js`, `sha256.js`, `vault.js`다. `dev-server.js`, 테스트, node_modules는 배포하지 않는다. 예를 들어 서버의 `/companion/` 아래에서 정적 제공한다.
+
+초대 링크는 `https://<host>/companion/index.html#<tripId>.<code>`로 연결해야 한다. 휴대폰 웹에서 발급한 초대는 현재 컴패니언 페이지 주소로 링크를 구성한다. 차량 앱이 표시하는 서버 발급 초대 URL도 해당 호스트 화면으로 연결되도록 서버 설정이 필요하다.
+
+가능하면 API와 같은 HTTPS 원점에서 제공한다. 서로 다른 원점에서 제공하면 서버가 해당 프론트 원점에 대해 CORS를 허용해야 한다. 필요한 요청 헤더는 Authorization, Content-Type, X-Content-SHA256이고 메서드는 GET, POST, PUT, DELETE다. 브라우저 보안을 우회하는 로컬 프록시는 제공하지 않는다.
+
+이 저장소에서 운영 호스팅이나 CORS 설정을 변경하지 않았다. 실제 계정·원본으로 전체 흐름과 iOS/Android 브라우저를 검증해야 한다.
+
+## 기존 임베드 컴포넌트
+
+`drive-timeline.js`는 호스트가 개인 토큰에 연결된 request 함수를 전달하는 타임라인 컴포넌트로 유지한다. `example.html`은 기존 합성 데이터 예시다.
+
+```js
+timeline.connect({ tripId, request: (path, options) => fetch(path, options) })
+```
+
+차량 화면에 임베드하면 `vehicle: true, parked: false`로 시작하고, 차량 상태에 따라 `setParked(true|false)`를 호출한다. 실제 Gleo 공급자가 연결되면 최종 음성 명령을 `timeline.voice(command)`로 전달할 수 있다. 이 공급자 자체는 이 웹에서 구현하지 않는다.

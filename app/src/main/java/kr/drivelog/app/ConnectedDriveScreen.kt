@@ -42,6 +42,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
     var library by remember(api) { mutableStateOf<List<SavedClip>?>(null) }
     var error by remember(api) { mutableStateOf<String?>(null) }
     var busy by remember(api) { mutableStateOf(false) }
+    var requestJob by remember(api) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var selectedMark by remember(api) { mutableStateOf<RemoteMoment?>(null) }
     var selectedSaved by remember(api) { mutableStateOf<SavedClip?>(null) }
     var preview by remember(api) { mutableStateOf<File?>(null) }
@@ -54,7 +55,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
         if (busy) return
         busy = true
         error = null
-        scope.launch {
+        requestJob = scope.launch {
             try {
                 block()
             } catch (cancelled: CancellationException) {
@@ -73,6 +74,26 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
             state.select(value, api.timeline(value.id))
         } else state.select(value, null)
         trips = api.trips()
+    }
+
+    LaunchedEffect(api, trip?.id) {
+        val selectedId = trip?.id ?: return@LaunchedEffect
+        while (true) {
+            delay(5000)
+            if (busy || (context as? LifecycleOwner)?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != true) continue
+            try {
+                val fresh = api.trip(selectedId).remoteTrip()
+                if (state.trip?.id != selectedId) break
+                val data = if (fresh.isOccupant(state.accountId) && fresh.phase !in listOf("DISCARDING", "DISCARDED")) api.timeline(selectedId) else null
+                state.select(fresh, data)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                preview = null
+                qr = null
+                error = failure.serverMessage()
+                break
+            }
+        }
     }
 
     val previewFile = preview
@@ -99,7 +120,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
                     }
                     markedClip != null && trip != null -> {
                         val current = api.timeline(trip.id)
-                        state.select(trip.copy(phase = current.phase), current)
+                        state.select((state.trip ?: trip).copy(phase = current.phase), current)
                         if (current.moments.none { it.id == markedClip.id && it.canPlay }) {
                             preview = null
                             selectedMark = null
@@ -152,6 +173,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
     AnimatedVisibility(busy) {
         LinearProgressIndicator(Modifier.fillMaxWidth())
     }
+    if (busy) Action("진행 중인 요청 취소") { requestJob?.cancel() }
     error?.let { ServerNotice(it) }
     state.markMessage?.let { ServerNotice(it) }
     if (state.pending != null) Action("표시 다시 보내기", onClick = state::retry)
@@ -291,6 +313,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
         Confirm("서버 연결을 해제할까요?", "다시 연결하려면 세션 토큰을 입력해야 해요.", "연결 해제",
             dismiss = { disconnect = false }) {
             disconnect = false
+            DeviceSessionStore(context).clear()
             state.disconnect()
         }
     }
@@ -304,8 +327,16 @@ private fun ConnectionForm(state: ConnectedDriveState) {
     var account by remember { mutableStateOf("") }
     var credential by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
+    var integrationState by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var busy by remember { mutableStateOf(false) }
 
+    val deviceStore = remember(context) { DeviceSessionStore(context) }
+    var rememberAccount by remember { mutableStateOf(false) }
+    var restored by remember { mutableStateOf(false) }
+    LaunchedEffect(deviceStore) {
+        val saved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { deviceStore.load() }
+        if (saved != null) { origin = saved.origin; account = saved.accountId; credential = saved.token; rememberAccount = true; restored = true }
+    }
     Copy("서버 연결", 40, strong = true)
     Copy("발급받은 개인 토큰을 입력하세요. 팀 서버 토큰은 차량에 입력하지 마세요.", 24)
     OutlinedTextField(origin, { origin = it }, label = { Copy("HTTPS 서버 주소", 20) },
@@ -319,6 +350,11 @@ private fun ConnectionForm(state: ConnectedDriveState) {
         visualTransformation = PasswordVisualTransformation(), singleLine = true,
         modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
         textStyle = LocalTextStyle.current.copy(fontSize = 24.sp))
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.material3.Checkbox(rememberAccount, onCheckedChange = { rememberAccount = it }, enabled = !busy)
+        Copy("이 기기에 개인 계정 암호화 보관 (선택)", 20)
+    }
+    if (restored) Copy("기기에 보관한 계정을 불러왔어요. 연결하면 서버에서 권한을 다시 확인해요.", 20)
     AnimatedVisibility(busy) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
     status?.let { ServerNotice(it) }
     Action("음성 표시 연동", enabled = !busy) {
@@ -328,7 +364,9 @@ private fun ConnectionForm(state: ConnectedDriveState) {
         busy = true
         scope.launch {
             try {
-                val value = DriveLogApi(origin, "").status()
+                val publicApi = DriveLogApi(origin, "")
+                val value = publicApi.status()
+                integrationState = publicApi.integrations()
                 status = if (value == "ready") "서버가 준비됐어요." else "서버가 아직 준비되지 않았어요."
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -337,6 +375,14 @@ private fun ConnectionForm(state: ConnectedDriveState) {
             } finally {
                 busy = false
             }
+        }
+    }
+    integrationState?.optJSONArray("integrations")?.let { items ->
+        val labels = mapOf("vehicle-video" to "카메라 원본 자동 연결", "pleos-vehicle-state" to "차량 상태 연결",
+            "pleos-navi" to "내비게이션 연결", "pleos-fused-location" to "위치 연결", "instagram-stories" to "휴대폰 스토리 공유")
+        for (index in 0 until items.length()) {
+            val item = items.getJSONObject(index)
+            labels[item.optString("id")]?.let { label -> Copy("$label · ${if (item.optBoolean("operational")) "연결 가능" else "기기·계정 설정 확인 필요"}", 20) }
         }
     }
     Action("내 운행 연결", primary = true, enabled = origin.isNotBlank() && credential.isNotBlank() && validAccount != null && !busy) {
@@ -348,6 +394,11 @@ private fun ConnectionForm(state: ConnectedDriveState) {
             scope.launch {
                 try {
                     api.trips()
+                    val token = credential.trim()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        if (rememberAccount) deviceStore.save(DeviceSession(origin.trim(), requireNotNull(validAccount), token))
+                        else deviceStore.clear()
+                    }
                     credential = ""
                     state.connect(api, requireNotNull(validAccount))
                 } catch (cancelled: CancellationException) {

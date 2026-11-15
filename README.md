@@ -79,7 +79,7 @@ adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app
 
 ## 연결된 드라이브
 
-주차 홈의 **운행 연결**에서 운영 HTTPS 주소와 발급받은 **accountId와 개인 accessToken**을 입력합니다. 팀 Bearer 토큰은 차량에 입력하지 않습니다. 연결 후 **내 운행**에서 서버에 등록된 운행과 보관함을 열 수 있으며, 개인 토큰은 메모리에만 유지합니다. 운행 ID는 `trip-` 접두사를 포함한 문자열 전체를 사용합니다.
+주차 홈의 **운행 연결**에서 운영 HTTPS 주소와 발급받은 **accountId와 개인 accessToken**을 입력합니다. 팀 Bearer 토큰은 차량에 입력하지 않습니다. 연결 후 **내 운행**에서 서버에 등록된 운행과 보관함을 열 수 있으며, 개인 토큰은 기본적으로 메모리에 유지하며, 선택 시 Android Keystore로 암호화해 기기에 보관합니다. 운행 ID는 `trip-` 접두사를 포함한 문자열 전체를 사용합니다.
 
 | 기능 | API |
 | --- | --- |
@@ -101,7 +101,7 @@ adb shell am broadcast --user current -a kr.drivelog.app.DEMO -p kr.drivelog.app
 
 ## 음성 표시와 휴대폰 공유
 
-**운행 연결 → 음성 표시 연동**에서 배정받은 주행 ID와 개인 토큰으로 연결합니다. 기기에 연결된 음성 인식기를 통해 순간을 표시하며, 서버가 요청을 수락하면 TTS로 응답합니다. 동승자 표시와 타임라인 예제는 [passenger-web](passenger-web/README.md)에 있습니다.
+**운행 연결 → 음성 표시 연동**에서 배정받은 주행 ID와 개인 토큰으로 연결합니다. 기기에 연결된 음성 인식기를 통해 순간을 표시하며, 서버가 요청을 수락하면 TTS로 응답합니다. 휴대폰 초대 수락·동의·표시·업로드·편집·보관 화면과 배포 방법은 [passenger-web](passenger-web/README.md)에 있습니다.
 
 Android 9 이상에서 `./gradlew :phone:assembleDebug`로 빌드한 `phone/build/outputs/apk/debug/phone-debug.apk`와 Instagram을 설치합니다. DriveLog 스토리 앱에 프로젝트의 공개 Meta 앱 ID를 입력하거나 빌드 시 `-PdriveLogMetaAppId=숫자ID`를 지정합니다.
 
@@ -110,3 +110,5 @@ Android 9 이상에서 `./gradlew :phone:assembleDebug`로 빌드한 `phone/buil
 [이전 목업 구현 및 검증 기록](docs/implementation.md)
 
 API 구현 범위와 검증 방법은 [API 연동 기록](docs/api-integration.md)을 참고하세요.
+
+디버그 앱에서는 홈의 **주행 시연 시작**과 기록 화면의 **주차 시연으로 돌아가기**로 직접 상태를 전환할 수 있습니다. 실제 차량 주행 제한이 활성화된 동안에는 사용할 수 없습니다.

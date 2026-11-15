@@ -80,6 +80,9 @@ internal fun RecordingScreen(state: DriveLogState, connected: ConnectedDriveStat
                     }
                 }
             }
+            if (BuildConfig.DEBUG && state.canRequestDemoShorts) {
+                Action("주차 시연으로 돌아가기") { state.simulateParking() }
+            }
             Copy(
                 message,
                 24,

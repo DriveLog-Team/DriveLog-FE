@@ -38,8 +38,20 @@ internal fun RemoteRecommendations(
     var refresh by remember { mutableIntStateOf(0) }
     var saveMessage by remember(api, tripId) { mutableStateOf<String?>(null) }
 
+    var profiles by remember(api) { mutableStateOf<List<ExportProfile>?>(null) }
+    var profileError by remember(api) { mutableStateOf<String?>(null) }
+    var chosenProfile by remember(api, tripId) {
+        mutableStateOf(preferences.getString("$tripId:profile", "STORY_15") ?: "STORY_15")
+    }
+    var profileReload by remember { mutableIntStateOf(0) }
+    LaunchedEffect(api, profileReload) {
+        try { profiles = api.profiles(); profileError = null }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) { profileError = failure.serverMessage() }
+    }
+
     fun follow(id: String) {
-        preferences.edit().putString(tripId, id).apply()
+        preferences.edit().putString(tripId, id).putString("$tripId:profile", chosenProfile).apply()
         jobId = id
         status = null
         selected = null
@@ -96,8 +108,15 @@ internal fun RemoteRecommendations(
     }
     if (phase != "READY" && jobId == null) return
     Copy("추천 영상", 28, strong = true)
+    profileError?.let { Copy(it, 20); Action("출력 옵션 다시 확인", enabled = !busy) { profileReload++ } }
+    if (jobId == null) profiles?.forEach { profile ->
+        Action("${profile.durationMs / 1000}초 영상" + (if (chosenProfile == profile.id) " · 선택됨" else "") +
+            (if (!profile.available) " · 현재 사용 불가" else ""),
+            enabled = !busy && profile.available && profile.id in listOf("STORY_15", "SHORT_30")) { chosenProfile = profile.id }
+    }
+    val canCreate = profiles?.any { it.id == chosenProfile && it.available } == true
     if (jobId == null && pendingSave == null) {
-        Action("15초 추천 만들기", enabled = !busy) { request { follow(api.createJob(tripId)) } }
+        Action("선택한 길이로 추천 만들기", enabled = !busy && canCreate) { request { follow(api.createJob(tripId, chosenProfile)) } }
     }
     pollingError?.let {
         Copy(it, 20)
@@ -108,8 +127,8 @@ internal fun RemoteRecommendations(
         "RUNNING" -> Copy("추천 영상을 만드는 중이에요.", 22)
         "FAILED" -> {
             Copy("추천 작업이 실패했어요.", 22)
-            Action("새 추천 작업 요청", enabled = !busy && pendingSave == null && phase == "READY") {
-                request { follow(api.createJob(tripId)) }
+            Action("새 추천 작업 요청", enabled = !busy && canCreate && pendingSave == null && phase == "READY") {
+                request { follow(api.createJob(tripId, chosenProfile)) }
             }
         }
         "READY" -> {
@@ -142,6 +161,11 @@ internal fun RemoteRecommendations(
         }
         val cards = status?.optJSONObject("result")?.optJSONArray("cards")
         val card = cards?.let { array -> (0 until array.length()).map { array.getJSONObject(it) }.find { it.getString("id") == id } }
+        card?.optJSONObject("recommendation")?.optString("reason")?.takeIf { it.isNotBlank() }?.let { Copy(it, 20) }
+        card?.optJSONObject("soundEvent")?.optString("kind")?.let { kind ->
+            if (kind == "LAUGHTER") Copy("함께 웃은 장면", 20)
+            if (kind == "BABBLING") Copy("아이의 옹알이가 담긴 장면", 20)
+        }
         if (card != null) key(version, id) {
             RemoteClipEditor(card, busy || pendingSave != null) { draft -> request { follow(api.edit(version, draft)) } }
         }
