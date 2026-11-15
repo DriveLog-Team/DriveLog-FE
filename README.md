@@ -4,6 +4,19 @@
 
 **차 안에서 기억하고 싶은 순간을 남기고, 도착 후 짧은 영상으로 다시 보는 드라이브 기록 앱입니다.** 함께 웃었던 대화나 터널 끝에서 처음 본 바다를 주행 중 표시해 두고, 주차한 뒤 그날의 타임라인을 다시 열어보는 경험을 만듭니다. 이 저장소에는 Pleos Connect용 차량 앱, 동승자 웹 예제, Android 스토리 공유 앱이 있습니다.
 
+## 차량용 release APK
+
+**채원과아이들 · DriveLog 0.2.0** · [서명된 차량 앱 다운로드](apk/채원과아이들_DriveLog_release.apk)
+
+Pleos Connect v2.1.0, Android Automotive 14(API 34), 가로 2560 × 세로 1440 px에서 실행합니다. 차량을 주차 상태로 두고 에뮬레이터를 시작한 다음 저장소 루트에서 설치합니다.
+
+```sh
+adb install --user current -r "apk/채원과아이들_DriveLog_release.apk"
+adb shell am start --user current -n kr.drivelog.app/.MainActivity
+```
+
+처음에는 탑승자 동의와 기록 설정을 저장합니다. **운행 연결 → 서버 상태 확인**은 계정 없이 사용할 수 있습니다. 개인 운행은 운영 HTTPS 주소와 발급받은 개인 accountId·accessToken이 필요합니다. 동승자 초대 웹과 동의 충돌·추천 재시도 처리는 [서버 변경](https://github.com/DriveLog-Team/DriveLog-BE/tree/fix/companion-consent-and-hosting)과 함께 사용합니다.
+
 ## 우리가 만들고 싶은 경험
 
 - **여행에 집중하기.** 이동 중에는 기억하고 싶은 순간만 표시하고, 상세 기록과 영상은 주차한 뒤 확인합니다.

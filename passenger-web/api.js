@@ -57,7 +57,7 @@ export class DriveApi {
     if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('서버 원점 주소만 입력하세요.')
     this.origin = url.origin; this.fetcher = fetcher
   }
-  authorize(accountId, token) { uuid(accountId); if (!token.trim()) throw new Error('개인 토큰을 입력하세요.'); this.#generation++; this.accountId = accountId; this.#token = token.trim() }
+  authorize(accountId, token) { uuid(accountId); const embedded=token.trim().split('.')[0]; if(UUID.test(embedded)&&embedded.toLowerCase()!==accountId.toLowerCase())throw new Error('accountId와 개인 토큰의 계정이 다릅니다.'); if (!token.trim()) throw new Error('개인 토큰을 입력하세요.'); this.#generation++; this.accountId = accountId; this.#token = token.trim() }
   disconnect() { this.#generation++; this.accountId = undefined; this.#token = '' }
   path(value) {
     const url = new URL(value, this.origin)
@@ -94,13 +94,13 @@ export class DriveApi {
   join(invite, attempt) { return this.json(this.tripPath(invite.tripId)+'/join',{method:'POST',authenticated:false,body:{code:invite.code,claimKey:attempt.claimKey,displayName:displayName(attempt.displayName)}}) }
   name(id, name) { return this.json(this.tripPath(id)+'/display-name',{method:'PUT',body:{displayName:displayName(name)}}) }
   mark(id, pending) { return this.json(`${this.tripPath(id)}/marks/${uuid(pending.id)}`,{method:'PUT',body:{kind:'TAP',atMs:pending.atMs}}) }
-  consent(id,target,decision) { if(!['PASSENGER','GUARDIAN'].includes(target.role))throw new Error('역할을 확인하세요.'); return this.json(`${this.tripPath(id)}/consents/${uuid(target.occupant)}/${target.role}`,{method:'PUT',body:decision}) }
+  consent(id,target,decision,version) { if(!['PASSENGER','GUARDIAN'].includes(target.role))throw new Error('역할을 확인하세요.'); return this.json(`${this.tripPath(id)}/consents/${uuid(target.occupant)}/${target.role}`,{method:'PUT',headers:version?{'X-DriveLog-Receipt-Version':version}:{},body:decision}) }
   pick(id, mark) { return this.json(`${this.tripPath(id)}/picks/${uuid(mark)}`,{method:'PUT'}) }
   invite(id, under14, guardian) { return this.json(this.tripPath(id)+'/invites',{method:'POST',body:{under14,...(under14?{guardian:uuid(guardian)}:{})}}) }
   context(id, context) { return this.json(this.tripPath(id)+'/context',{method:'PUT',body:context}) }
   job(id) { return this.json(`/api/media/jobs/${uuid(id)}`) }
-  createJob(id, profile) { if(!['STORY_15','SHORT_30'].includes(profile))throw new Error('출력 형식을 확인하세요.'); return this.json('/api/media/jobs',{method:'POST',body:{tripId:tripId(id),profile}}) }
-  edit(job, body) { return this.json(`/api/media/jobs/${uuid(job)}/edits`,{method:'POST',body}) }
+  createJob(id, profile, key) { if(!['STORY_15','SHORT_30'].includes(profile))throw new Error('출력 형식을 확인하세요.'); return this.json('/api/media/jobs',{method:'POST',headers:key?{'Idempotency-Key':uuid(key)}:{},body:{tripId:tripId(id),profile}}) }
+  edit(job, body, key) { return this.json(`/api/media/jobs/${uuid(job)}/edits`,{method:'POST',headers:key?{'Idempotency-Key':uuid(key)}:{},body}) }
   finalize(id, choice) { return this.json(this.tripPath(id)+'/finalize',{method:'POST',body:{jobId:uuid(choice.jobId),moment:choice.moment}}) }
   discard(id) { return this.json(this.tripPath(id),{method:'DELETE'}) }
   handoff(id, choice) { return choice ? this.json(this.cardPath(choice.jobId,choice.moment)+'/handoffs',{method:'POST'}) : this.json(`/api/library/${tripId(id)}/handoffs`,{method:'POST'}) }

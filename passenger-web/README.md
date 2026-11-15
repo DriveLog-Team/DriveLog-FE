@@ -15,7 +15,7 @@
 
 토큰은 기본적으로 메모리에 유지한다. 사용자가 **기기 계정 보관**을 선택하면 8자 이상 암호에서 PBKDF2로 키를 만들어 AES-GCM으로 계정 정보를 암호화한 뒤 브라우저에 저장한다. 잠금 암호와 평문 토큰은 저장하지 않는다. 기기에 저장한 계정은 연결 화면에서 잠금을 풀거나 삭제할 수 있다. 공용 기기에서는 보관을 선택하지 않는다. 계정 보관은 HTTPS 및 브라우저 Web Crypto 지원이 필요하다.
 
-초대 수락의 claimKey는 난수 32바이트를 base64url로 변환한다. 응답이 끊기면 같은 탭에서 같은 claimKey와 이름으로 재시도한다. 재시도 정보만 sessionStorage에 보관하며, 초대 코드 대신 해시를 저장 키로 사용한다. 수락 성공 후 URL 조각과 재시도 정보를 지운다. 기기 계정 보관을 선택하지 않은 경우 새로고침 후 다시 개인 계정 연결이 필요하다.
+초대 수락의 claimKey는 난수 32바이트를 base64url로 변환한다. 응답이 끊기면 같은 탭에서 같은 claimKey와 이름으로 재시도한다. 재시도 정보만 sessionStorage에 보관하며, 초대 코드 대신 해시를 저장 키로 사용한다. 수락 성공 후 URL 조각과 재시도 정보를 지운다. 초대 계정은 탭 저장소에 암호문으로 저장하고 내보낼 수 없는 IndexedDB 키로 복원한다. 같은 탭의 새로고침 후에도 연결된다. 연결 해제 시 탭의 암호문을 삭제한다. 탭을 닫은 뒤에도 사용하려면 참여 전에 기기 계정 보관을 선택한다.
 
 서버가 반환한 영상 URL에도 같은 원점의 API 경로만 허용한다. 인증 헤더를 붙여 영상을 받은 뒤 Blob URL로 재생하고, 닫거나 화면을 숨기면 회수한다. 재생 중 접근 상태를 주기적으로 다시 확인하며 공유 철회·삭제·조회 실패 시 재생을 닫는다. 개인 재생본의 외부 공유 기능은 제공하지 않고, 공유는 서버가 발급한 공유본 QR을 사용한다.
 
@@ -42,13 +42,13 @@ node dev-server.js --fixture
 
 ## 서버에 배포할 파일과 필요한 설정
 
-배포 대상은 `index.html`, `styles.css`, `app.js`, `api.js`, `sha256.js`, `vault.js`다. `dev-server.js`, 테스트, node_modules는 배포하지 않는다. 예를 들어 서버의 `/companion/` 아래에서 정적 제공한다.
+배포 대상은 `index.html`, `styles.css`, `app.js`, `api.js`, `sha256.js`, `vault.js`, `guest-session.js`다. `dev-server.js`, 테스트, node_modules는 배포하지 않는다. 예를 들어 서버의 `/api/companion/` 아래에서 정적 제공한다.
 
-초대 링크는 `https://<host>/companion/index.html#<tripId>.<code>`로 연결해야 한다. 휴대폰 웹에서 발급한 초대는 현재 컴패니언 페이지 주소로 링크를 구성한다. 차량 앱이 표시하는 서버 발급 초대 URL도 해당 호스트 화면으로 연결되도록 서버 설정이 필요하다.
+초대 링크는 `https://<host>/api/companion/index.html#<tripId>.<code>`로 연결해야 한다. 휴대폰 웹에서 발급한 초대는 현재 컴패니언 페이지 주소로 링크를 구성한다. 차량 앱이 표시하는 서버 발급 초대 URL도 해당 호스트 화면으로 연결되도록 서버 설정이 필요하다.
 
-가능하면 API와 같은 HTTPS 원점에서 제공한다. 서로 다른 원점에서 제공하면 서버가 해당 프론트 원점에 대해 CORS를 허용해야 한다. 필요한 요청 헤더는 Authorization, Content-Type, X-Content-SHA256이고 메서드는 GET, POST, PUT, DELETE다. 브라우저 보안을 우회하는 로컬 프록시는 제공하지 않는다.
+API와 같은 HTTPS 원점에서 제공하면 별도 CORS 설정 없이 초대와 계정 연결을 사용할 수 있다. 서로 다른 원점에서 제공하면 서버가 해당 프론트 원점, 요청 헤더 Authorization, Content-Type, X-Content-SHA256, X-DriveLog-Receipt-Version, Idempotency-Key와 메서드 GET, POST, PUT, DELETE를 허용해야 한다.
 
-이 저장소에서 운영 호스팅이나 CORS 설정을 변경하지 않았다. 실제 계정·원본으로 전체 흐름과 iOS/Android 브라우저를 검증해야 한다.
+[DriveLog BE의 컴패니언 배포 소스](https://github.com/DriveLog-Team/DriveLog-BE/tree/fix/companion-consent-and-hosting/src/main/resources/static/api/companion)는 위 7개 파일을 서버 JAR에 포함한다. 프런트 변경 시 같은 파일을 갱신한다.
 
 ## 기존 임베드 컴포넌트
 

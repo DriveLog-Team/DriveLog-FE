@@ -134,11 +134,11 @@ internal class DriveLogApi(
 
     suspend fun consent(tripId: String, occupant: String, role: String,
                         extraction: Boolean, geminiTranscript: Boolean,
-                        useTripContext: Boolean, shareMarkedClips: Boolean): JSONObject {
+                        useTripContext: Boolean, shareMarkedClips: Boolean, receiptVersion: String? = null): JSONObject {
         require(role in listOf("PASSENGER", "GUARDIAN"))
         return objectRequest("${tripPath(tripId)}/consents/${UUID.fromString(occupant)}/$role", "PUT",
             JSONObject().put("extraction", extraction).put("geminiTranscript", geminiTranscript)
-                .put("useTripContext", useTripContext).put("shareMarkedClips", shareMarkedClips))
+                .put("useTripContext", useTripContext).put("shareMarkedClips", shareMarkedClips), receiptVersion = receiptVersion)
     }
 
     suspend fun invite(tripId: String, under14: Boolean, guardian: String?): JSONObject {
@@ -173,22 +173,22 @@ internal class DriveLogApi(
             }) { JSONObject(it.inputStream.bufferedReader().use { reader -> reader.readText() }) }
         }
 
-    suspend fun createJob(tripId: String, profile: String = "STORY_15"): String {
+    suspend fun createJob(tripId: String, profile: String = "STORY_15", requestKey: String? = null): String {
         require(profile in listOf("STORY_15", "SHORT_30"))
         tripIdentifier(tripId)
         return objectRequest("/api/media/jobs", "POST",
-            JSONObject().put("tripId", tripId).put("profile", profile)).uuid("jobId")
+            JSONObject().put("tripId", tripId).put("profile", profile), requestKey = requestKey).uuid("jobId")
     }
 
     suspend fun job(jobId: String): JSONObject = objectRequest(jobPath(jobId))
 
-    suspend fun edit(jobId: String, edit: ClipEdit): String {
+    suspend fun edit(jobId: String, edit: ClipEdit, requestKey: String? = null): String {
         val body = JSONObject().put("id", edit.id)
         edit.title?.let { body.put("title", it) }
         edit.startMs?.let { body.put("startMs", it) }
         edit.endMs?.let { body.put("endMs", it) }
         edit.captions?.let { body.put("captions", JSONArray(it)) }
-        return objectRequest("${jobPath(jobId)}/edits", "POST", body).uuid("jobId")
+        return objectRequest("${jobPath(jobId)}/edits", "POST", body, requestKey = requestKey).uuid("jobId")
     }
 
     suspend fun finalize(tripId: String, jobId: String, cardId: String): JSONObject =
@@ -258,7 +258,9 @@ internal class DriveLogApi(
         method: String = "GET",
         body: JSONObject? = null,
         authenticated: Boolean = true,
-    ): JSONObject = request(path, method, body, authenticated) {
+        requestKey: String? = null,
+        receiptVersion: String? = null,
+    ): JSONObject = request(path, method, body, authenticated, receiptVersion = receiptVersion, requestKey = requestKey) {
         JSONObject(it.inputStream.bufferedReader().use { reader -> reader.readText() })
     }
 
@@ -272,6 +274,8 @@ internal class DriveLogApi(
         body: JSONObject? = null,
         authenticated: Boolean = true,
         accept: String = "application/json",
+        requestKey: String? = null,
+        receiptVersion: String? = null,
         write: (suspend (HttpsURLConnection) -> Unit)? = null,
         read: suspend (HttpsURLConnection) -> T,
     ): T = withContext(Dispatchers.IO) {
@@ -283,6 +287,8 @@ internal class DriveLogApi(
             connection.readTimeout = 12000
             connection.requestMethod = method
             connection.setRequestProperty("Accept", accept)
+            if (requestKey != null) connection.setRequestProperty("Idempotency-Key", requestKey)
+            if (receiptVersion != null) connection.setRequestProperty("X-DriveLog-Receipt-Version", receiptVersion)
             if (authenticated) connection.setRequestProperty("Authorization", "Bearer $token")
             if (body != null) {
                 connection.doOutput = true

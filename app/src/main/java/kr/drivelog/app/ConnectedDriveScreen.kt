@@ -91,8 +91,20 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
                 preview = null
                 qr = null
                 error = failure.serverMessage()
-                break
             }
+        }
+    }
+
+    suspend fun openPreview(file: File, allowed: suspend () -> Boolean) {
+        try {
+            val lifecycle = (context as? LifecycleOwner)?.lifecycle
+            if (allowed() && lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true) {
+                preview = file
+            } else {
+                error = "공유 또는 보관 상태가 바뀌어 미리보기를 닫았어요."
+            }
+        } finally {
+            if (preview !== file) file.delete()
         }
     }
 
@@ -207,7 +219,9 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
             Copy(saved.title, 32, strong = true)
             Copy("${saved.durationMs / 1000}초 · 보관함", 24)
             Action("미리보기", primary = true, enabled = !busy) {
-                launchRequest { preview = api.downloadSaved(saved, context.cacheDir) }
+                launchRequest { openPreview(api.downloadSaved(saved, context.cacheDir)) {
+                    api.library().any { it.tripId == saved.tripId && it.markId == saved.markId && it.clipUrl == saved.clipUrl }
+                } }
             }
             if (saved.markId == null) Action("휴대폰 저장 QR", enabled = !busy) {
                 launchRequest { qr = api.handoff(saved.tripId) }
@@ -235,7 +249,9 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
             MomentMetadata(moment)
             if (moment.canPlay) {
                 Action("미리보기", primary = true, enabled = !busy) {
-                    launchRequest { preview = api.downloadMoment(trip.id, moment, context.cacheDir) }
+                    launchRequest { openPreview(api.downloadMoment(trip.id, moment, context.cacheDir)) {
+                    api.timeline(trip.id).moments.any { it.id == moment.id && it.canPlay && it.clipUrl == moment.clipUrl }
+                } }
                 }
             }
             if (moment.canPlay && trip.isOccupant(state.accountId) && trip.phase !in listOf("SAVED", "DISCARDED", "DISCARDING")) {
@@ -260,7 +276,7 @@ internal fun ConnectedDriveScreen(state: ConnectedDriveState) {
                 updated = ::refreshTrip, discarded = { library = null; selectedMark = null; preview = null })
             if (trip.owner == state.accountId && trip.phase !in listOf("DISCARDED", "DISCARDING"))
             RemoteRecommendations(api, trip.id, trip.phase, busy, ::launchRequest,
-                preview = { preview = it }, saved = {
+                preview = { file -> openPreview(file) { api.trip(trip.id).getString("phase") == "READY" } }, saved = {
                     refreshTrip(api.trip(trip.id).remoteTrip())
                     library = api.library()
                 })
@@ -339,14 +355,18 @@ private fun ConnectionForm(state: ConnectedDriveState) {
     }
     Copy("서버 연결", 40, strong = true)
     Copy("발급받은 개인 토큰을 입력하세요. 팀 서버 토큰은 차량에 입력하지 마세요.", 24)
-    OutlinedTextField(origin, { origin = it }, label = { Copy("HTTPS 서버 주소", 20) },
+    OutlinedTextField(origin, { value ->
+        origin = value
+        credential = ""
+        restored = false
+    }, enabled = !busy, label = { Copy("HTTPS 서버 주소", 20) },
         singleLine = true, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
         textStyle = LocalTextStyle.current.copy(fontSize = 24.sp))
-    OutlinedTextField(account, { account = it }, label = { Copy("발급받은 accountId", 20) },
+    OutlinedTextField(account, { account = it; credential = ""; restored = false }, enabled = !busy, label = { Copy("발급받은 accountId", 20) },
         singleLine = true, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
         textStyle = LocalTextStyle.current.copy(fontSize = 24.sp))
     val validAccount = runCatching { java.util.UUID.fromString(account.trim()).toString() }.getOrNull()
-    OutlinedTextField(credential, { credential = it }, label = { Copy("세션 토큰", 20) },
+    OutlinedTextField(credential, { credential = it }, enabled = !busy, label = { Copy("세션 토큰", 20) },
         visualTransformation = PasswordVisualTransformation(), singleLine = true,
         modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp),
         textStyle = LocalTextStyle.current.copy(fontSize = 24.sp))
@@ -386,6 +406,10 @@ private fun ConnectionForm(state: ConnectedDriveState) {
         }
     }
     Action("내 운행 연결", primary = true, enabled = origin.isNotBlank() && credential.isNotBlank() && validAccount != null && !busy) {
+        if (!credential.trim().startsWith("${validAccount}.")) {
+            status = "accountId와 개인 토큰의 계정이 다릅니다."
+            return@Action
+        }
         val api = runCatching { DriveLogApi(origin, credential.trim()) }.getOrNull()
         if (api == null) {
             status = "팀 서버의 HTTPS 주소를 확인하세요."

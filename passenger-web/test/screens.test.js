@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
@@ -37,7 +38,7 @@ async function setup(hash=''){
   const field=label=>{const l=[...window.document.querySelectorAll('label')].find(l=>l.textContent===label);assert.ok(l,`field ${label}`);return l.control||window.document.getElementById(l.htmlFor)}
   const idle=async()=>{for(let i=0;i<200;i++){await new Promise(r=>setTimeout(r,5));if(window.document.querySelector('#content').getAttribute('aria-busy')==='false')return}throw new Error('UI request did not settle')}
   const click=async text=>{button(text).click();await idle()}
-  const login=async()=>{field('개인 accountId').value=account;field('개인 accessToken').value='test-owner';button('내 드라이브 연결').closest('form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));await idle()}
+  const login=async(id=account,token='test-owner')=>{field('개인 accountId').value=id;field('개인 accessToken').value=token;button('내 드라이브 연결').closest('form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));await idle()}
   return {window,state,button,field,idle,click,login,tick:()=>tick()}
 }
 test('owner UI completes idempotent mark, invite, consent, uploads, edit and save with selected version',async()=>{
@@ -62,6 +63,32 @@ test('invite screen retries identical claim, connects passenger and strips fragm
   submit();await ui.idle();submit();await ui.idle()
   const joins=ui.state.requests.filter(r=>r.path.endsWith('/join'));assert.equal(joins.length,2);assert.equal(joins[0].body.claimKey,joins[1].body.claimKey);assert.equal(joins[0].body.displayName,joins[1].body.displayName)
   assert.equal(ui.window.location.hash,'');assert.ok(ui.window.document.querySelector('h1').textContent.includes('이번 드라이브'))
-  assert.equal(ui.window.sessionStorage.length,0);assert.ok(!ui.window.document.body.innerHTML.includes('test-passenger'))
+  assert.equal(ui.window.sessionStorage.length,1);assert.ok(!JSON.stringify(Object.values(ui.window.sessionStorage)).includes('test-passenger'));assert.ok(!ui.window.document.body.innerHTML.includes('test-passenger'))
+  ui.window.happyDOM.abort()
+})
+
+test('switching accounts clears the previous library before rendering',async()=>{
+  const ui=await setup()
+  ui.state.saved=true
+  await ui.login()
+  await ui.click('보관함')
+  assert.ok(ui.window.document.querySelector('#content').textContent.includes('바꾼 제목'))
+  await ui.click('연결 해제')
+  ui.state.saved=false
+  await ui.login(passenger,'test-passenger')
+  assert.ok(!ui.window.document.querySelector('#content').textContent.includes('바꾼 제목'))
+  ui.window.happyDOM.abort()
+})
+
+test('refresh restores the invited guest in this tab and logout removes the encrypted session',async()=>{
+  const ui=await setup(`#${trip}.${'a'.repeat(43)}`)
+  ui.state.failedJoin=true
+  ui.field('함께 탈 때 사용할 이름').value='동승자'
+  ui.button('초대 수락하고 참여').closest('form').dispatchEvent(new ui.window.Event('submit',{bubbles:true,cancelable:true}))
+  await ui.idle()
+  await import(`../app.js?reload=${crypto.randomUUID()}`)
+  assert.ok(ui.window.document.body.textContent.includes('이번 드라이브'))
+  await ui.click('연결 해제')
+  assert.equal(sessionStorage.length,0)
   ui.window.happyDOM.abort()
 })

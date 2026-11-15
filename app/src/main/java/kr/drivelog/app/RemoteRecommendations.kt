@@ -19,7 +19,7 @@ internal fun RemoteRecommendations(
     phase: String,
     busy: Boolean,
     request: (suspend () -> Unit) -> Unit,
-    preview: (File) -> Unit,
+    preview: suspend (File) -> Unit,
     saved: suspend () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -50,8 +50,15 @@ internal fun RemoteRecommendations(
         catch (failure: Exception) { profileError = failure.serverMessage() }
     }
 
+    suspend fun operationKey(): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val slot = "$tripId:request"
+        preferences.getString(slot, null) ?: java.util.UUID.randomUUID().toString().also {
+            check(preferences.edit().putString(slot, it).commit())
+        }
+    }
+
     fun follow(id: String) {
-        preferences.edit().putString(tripId, id).putString("$tripId:profile", chosenProfile).apply()
+        preferences.edit().putString(tripId, id).putString("$tripId:profile", chosenProfile).remove("$tripId:request").apply()
         jobId = id
         status = null
         selected = null
@@ -116,7 +123,7 @@ internal fun RemoteRecommendations(
     }
     val canCreate = profiles?.any { it.id == chosenProfile && it.available } == true
     if (jobId == null && pendingSave == null) {
-        Action("선택한 길이로 추천 만들기", enabled = !busy && canCreate) { request { follow(api.createJob(tripId, chosenProfile)) } }
+        Action("선택한 길이로 추천 만들기", enabled = !busy && canCreate) { request { follow(api.createJob(tripId, chosenProfile, operationKey())) } }
     }
     pollingError?.let {
         Copy(it, 20)
@@ -128,7 +135,7 @@ internal fun RemoteRecommendations(
         "FAILED" -> {
             Copy("추천 작업이 실패했어요.", 22)
             Action("새 추천 작업 요청", enabled = !busy && canCreate && pendingSave == null && phase == "READY") {
-                request { follow(api.createJob(tripId, chosenProfile)) }
+                request { follow(api.createJob(tripId, chosenProfile, operationKey())) }
             }
         }
         "READY" -> {
@@ -167,7 +174,7 @@ internal fun RemoteRecommendations(
             if (kind == "BABBLING") Copy("아이의 옹알이가 담긴 장면", 20)
         }
         if (card != null) key(version, id) {
-            RemoteClipEditor(card, busy || pendingSave != null) { draft -> request { follow(api.edit(version, draft)) } }
+            RemoteClipEditor(card, busy || pendingSave != null) { draft -> request { follow(api.edit(version, draft, operationKey())) } }
         }
         Action("선택 영상 QR", enabled = !busy && pendingSave == null) {
             request { qr = api.cardHandoff(version, id) }
